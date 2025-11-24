@@ -8,6 +8,7 @@ web/*.js
 web/*.wasm
 web/*.data
 web/*.wasm.map
+build/
 
 # Compiled objects
 RetroArch/
