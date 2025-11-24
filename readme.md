@@ -11,16 +11,16 @@ This project builds RetroArch cores for WebAssembly/Emscripten.
 ## Prerequisites
 
 1. **Emscripten SDK** - Install and activate emsdk:
-   ```bash
-   # Install emsdk (if not already installed)
-   git clone https://github.com/emscripten-core/emsdk.git
-   cd emsdk
-   ./emsdk install latest
-   ./emsdk activate latest
+	```bash
+	# Install emsdk (if not already installed)
+	git clone https://github.com/emscripten-core/emsdk.git
+	cd emsdk
+	./emsdk install latest
+	./emsdk activate latest
 
-   # Activate for current session
-   source ./emsdk_env.sh
-   ```
+	# Activate for current session
+	source ./emsdk_env.sh
+	```
 
 2. **Git** - For cloning core repositories
 
@@ -40,7 +40,9 @@ Clone the cores you want to build:
 
 ### 2. Build Cores
 
-Build one or more cores:
+You can use the original build script or the top-level `Makefile` (recommended).
+
+Using the script directly:
 
 ```bash
 # Build a single core
@@ -53,9 +55,30 @@ Build one or more cores:
 ./build-cores.sh all
 ```
 
+Using the Makefile (preferred) — default target builds all cores:
+
+```bash
+# build all cores (default)
+make
+
+# build specific cores
+make build CORES="fceumm snes9x"
+
+# build a single core directly
+make build-core CORE=fceumm
+
+# remove all build artifacts (web/ and top-level build/)
+make clean
+
+# remove build artifacts for one core
+make clean-core CORE=fceumm
+```
+
 ## Output
 
-Built files will be placed in the `web/` directory:
+Built files will be placed in both the `web/` directory (for the web player) and a new top-level `build/` directory so they're easy to find and reuse.
+
+web/ (used by the web player):
 - `<corename>_libretro.js` - JavaScript loader
 - `<corename>_libretro.wasm` - WebAssembly binary
 
@@ -64,6 +87,10 @@ For example:
 - `web/fceumm_libretro.wasm`
 - `web/snes9x_libretro.js`
 - `web/snes9x_libretro.wasm`
+
+Top-level build/ (convenience copy of created artifacts):
+- `build/fceumm_libretro.js`
+- `build/fceumm_libretro.wasm`
 
 ## Project Structure
 
@@ -76,11 +103,12 @@ For example:
 ├── libretro-fceumm/       # FCEUMM core (clone with setup-cores.sh)
 ├── libretro-snes9x/       # SNES9X core (clone with setup-cores.sh)
 ├── libretro-mgba/         # mGBA core (clone with setup-cores.sh)
+├── Makefile               # Helper Makefile to build/clean cores (default: build all)
 └── web/                   # Build output directory
-    ├── fceumm_libretro.js
-    ├── fceumm_libretro.wasm
-    ├── retroarch.cfg
-    └── assets/            # RetroArch assets (download separately)
+	 ├── fceumm_libretro.js
+	 ├── fceumm_libretro.wasm
+	 ├── retroarch.cfg
+	 └── assets/            # RetroArch assets (download separately)
 ```
 
 ## Configuration
@@ -104,19 +132,19 @@ The lobby URL is configured in `RetroArch/file_path_special.h`:
 To add support for a new core, edit `build-cores.sh`:
 
 1. Add the core to the `CORES` array:
-   ```bash
-   ["corename"]="libretro-corename:corename_libretro_emscripten.bc:Makefile.libretro"
-   ```
+	```bash
+	["corename"]="libretro-corename:corename_libretro_emscripten.bc:Makefile.libretro"
+	```
 
 2. Add to `AVAILABLE_CORES` array:
-   ```bash
-   AVAILABLE_CORES=(fceumm snes9x mgba newcore)
-   ```
+	```bash
+	AVAILABLE_CORES=(fceumm snes9x mgba newcore)
+	```
 
 3. Add repository to `setup-cores.sh`:
-   ```bash
-   ["newcore"]="https://github.com/libretro/libretro-newcore.git"
-   ```
+	```bash
+	["newcore"]="https://github.com/libretro/libretro-newcore.git"
+	```
 
 ## Troubleshooting
 
