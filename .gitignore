@@ -1,0 +1,33 @@
+# Core repositories (cloned by setup-cores.sh)
+libretro-fceumm/
+libretro-snes9x/
+libretro-mgba/
+
+# Build output
+web/*.js
+web/*.wasm
+web/*.data
+web/*.wasm.map
+
+# Compiled objects
+RetroArch/
+
+# Core build artifacts
+libretro-*/obj/
+libretro-*/*.bc
+libretro-*/*.o
+
+web/assets/
+
+# macOS
+.DS_Store
+
+# Editor files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Logs
+*.log
