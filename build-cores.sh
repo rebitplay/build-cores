@@ -54,6 +54,7 @@ parse_gitlab_ci() {
 # Function to print usage
 print_usage() {
     echo -e "${BLUE}Usage:${NC}"
+    echo -e "  $0 -h | --help"
     echo -e "  $0 <core1> [core2] [core3] ..."
     echo -e "  $0 all"
     echo ""
@@ -63,9 +64,13 @@ print_usage() {
     done
     echo ""
     echo -e "${BLUE}Examples:${NC}"
+    echo -e "  $0 -h"
     echo -e "  $0 fceumm"
     echo -e "  $0 fceumm snes9x"
     echo -e "  $0 all"
+    echo ""
+    echo -e "${BLUE}Environment variables:${NC}"
+    echo -e "  NO_CLEAN=1  # Skip cleaning JS/WASM outputs before building"
 }
 
 # Function to check if emsdk is available
@@ -78,6 +83,33 @@ check_emsdk() {
     fi
     echo -e "${YELLOW}Emscripten version:${NC}"
     emcc --version
+}
+
+# Remove generated JS/WASM outputs for a specific core
+clean_js_wasm_outputs_for_core() {
+    local corename="$1"
+    local js="${corename}_libretro.js"
+    local wasm="${corename}_libretro.wasm"
+
+    # Remove from RetroArch output dir if present
+    [ -f "$RETROARCH_DIR/$js" ] && rm -f "$RETROARCH_DIR/$js"
+    [ -f "$RETROARCH_DIR/$wasm" ] && rm -f "$RETROARCH_DIR/$wasm"
+
+    # Remove from web output dir if present
+    [ -f "$WEB_DIR/$js" ] && rm -f "$WEB_DIR/$js"
+    [ -f "$WEB_DIR/$wasm" ] && rm -f "$WEB_DIR/$wasm"
+
+    # Remove from top-level build output dir if present
+    [ -f "$BUILD_OUTPUT_DIR/$js" ] && rm -f "$BUILD_OUTPUT_DIR/$js"
+    [ -f "$BUILD_OUTPUT_DIR/$wasm" ] && rm -f "$BUILD_OUTPUT_DIR/$wasm"
+}
+
+# Remove all generated JS/WASM outputs globally (for safety / fresh build)
+clean_all_js_wasm_outputs() {
+    echo -e "${YELLOW}Cleaning all existing JS/WASM outputs...${NC}"
+    rm -f "$RETROARCH_DIR"/*_libretro.js "$RETROARCH_DIR"/*_libretro.wasm || true
+    rm -f "$WEB_DIR"/*_libretro.js "$WEB_DIR"/*_libretro.wasm || true
+    rm -f "$BUILD_OUTPUT_DIR"/*_libretro.js "$BUILD_OUTPUT_DIR"/*_libretro.wasm || true
 }
 
 # Function to build a single core
@@ -162,6 +194,13 @@ build_core() {
     echo -e "${GREEN}✓ ${CORE_NAME} core built successfully${NC}"
     echo -e "${GREEN}Core output: $CORE_OUTPUT${NC}"
 
+    # Remove old JS/WASM outputs for this core before building RetroArch (skip if NO_CLEAN)
+    if [ -z "${NO_CLEAN:-}" ]; then
+        clean_js_wasm_outputs_for_core "$CORENAME"
+    else
+        echo -e "${YELLOW}NO_CLEAN set; skipping JS/WASM cleanup for ${CORENAME}${NC}"
+    fi
+
     # Copy the core to RetroArch directory
     echo -e "\n${BLUE}Step 2: Copying ${CORE_NAME} core to RetroArch...${NC}"
     cp "$CORE_OUTPUT" "$RETROARCH_DIR/libretro_emscripten.bc"    # Build RetroArch with the core
@@ -202,7 +241,12 @@ build_core() {
 
 # Main script
 main() {
-    # Check arguments
+    # Check arguments and show help
+    if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+        print_usage
+        exit 0
+    fi
+
     if [ $# -eq 0 ]; then
         echo -e "${RED}Error: No cores specified${NC}\n"
         print_usage
@@ -211,6 +255,13 @@ main() {
 
     # Check emsdk
     check_emsdk
+
+    # Optionally remove old JS/WASM outputs globally to avoid stale artifacts unless NO_CLEAN is set
+    if [ -z "${NO_CLEAN:-}" ]; then
+        clean_all_js_wasm_outputs
+    else
+        echo -e "${YELLOW}NO_CLEAN set; skipping global JS/WASM cleanup${NC}"
+    fi
 
     # Determine which cores to build
     local CORES_TO_BUILD=()
