@@ -129,21 +129,24 @@ The lobby URL is configured in `RetroArch/file_path_special.h`:
 
 ## Adding New Cores
 
-To add support for a new core, edit `build-cores.sh`:
+To add support for a new core, edit `build-cores/setup-cores.sh`:
 
-1. Add the core to the `CORES` array:
+1. Add a repository mapping to the `CORE_REPOS` array:
 	```bash
-	["corename"]="libretro-corename:corename_libretro_emscripten.bc:Makefile.libretro"
+	CORE_REPOS+=("newcore=https://github.com/libretro/libretro-newcore.git")
 	```
 
-2. Add to `AVAILABLE_CORES` array:
+2. `AVAILABLE_CORES` is derived automatically from `CORE_REPOS`, so you don't need to update it manually.
+
+3. Verify the core is known and clone the repository:
 	```bash
-	AVAILABLE_CORES=(fceumm snes9x mgba newcore)
+	./setup-cores.sh list
+	./setup-cores.sh newcore
 	```
 
-3. Add repository to `setup-cores.sh`:
+4. Build the new core:
 	```bash
-	["newcore"]="https://github.com/libretro/libretro-newcore.git"
+	./build-cores.sh newcore
 	```
 
 ## Troubleshooting

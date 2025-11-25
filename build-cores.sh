@@ -20,8 +20,10 @@ RETROARCH_DIR="$PROJECT_ROOT/RetroArch"
 WEB_DIR="$PROJECT_ROOT/web"
 BUILD_OUTPUT_DIR="$PROJECT_ROOT/build"
 
-# Available cores list
-AVAILABLE_CORES=(fceumm snes9x mgba)
+# Source core repository configuration and helper functions from setup-cores.sh.
+# This file defines CORE_REPOS, AVAILABLE_CORES and lookup helpers (get_core_repo, list_core_repos).
+# shellcheck source=build-cores/setup-cores.sh
+source "$PROJECT_ROOT/setup-cores.sh"
 
 # Function to parse .gitlab-ci.yml for core configuration
 parse_gitlab_ci() {

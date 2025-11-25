@@ -1,85 +1,172 @@
-#!/bin/bash
+#!/usr/bin/env bash
+# Edit CORE_REPOS below to add/remove cores
 
-# Setup script to clone libretro core repositories
-# This script helps you clone the core repositories you need
 
-set -e  # Exit on error
-
-# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Get the script directory (project root)
+
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Function to get core repository URL
-get_core_repo() {
-    local core=$1
-    case $core in
-        fceumm)
-            echo "https://github.com/libretro/libretro-fceumm.git"
-            ;;
-        snes9x)
-            echo "https://github.com/libretro/snes9x.git"
-            ;;
-        mgba)
-            echo "https://github.com/libretro/mgba.git"
-            ;;
-        *)
-            echo ""
-            ;;
-    esac
-}
 
-# Available cores
-AVAILABLE_CORES=(fceumm snes9x mgba)
 
-# Function to clone a core repository
-clone_core() {
-    local CORE_NAME=$1
-    local REPO_URL=$(get_core_repo "$CORE_NAME")
 
-    if [ -z "$REPO_URL" ]; then
-        echo -e "${RED}Error: Unknown core '$CORE_NAME'${NC}"
-        echo -e "Available cores: ${AVAILABLE_CORES[*]}"
-        return 1
+if [ -z "${SETUP_CORES_CONFIG_LOADED:-}" ]; then
+  SETUP_CORES_CONFIG_LOADED=1
+
+  CORE_REPOS=(
+    "fceumm=https://github.com/libretro/libretro-fceumm.git"
+    "snes9x=https://github.com/libretro/snes9x.git"
+    "mgba=https://github.com/libretro/mgba.git"
+  )
+
+
+  AVAILABLE_CORES=()
+  for kv in "${CORE_REPOS[@]}"; do
+    AVAILABLE_CORES+=("${kv%%=*}")
+  done
+
+
+  get_core_repo() {
+    local core="$1"
+    local kv name url
+    if [ -z "$core" ]; then
+      return 1
     fi
-
-    local TARGET_DIR="$PROJECT_ROOT/libretro-$CORE_NAME"
-
-    if [ -d "$TARGET_DIR" ]; then
-        echo -e "${YELLOW}Directory $TARGET_DIR already exists, skipping...${NC}"
+    for kv in "${CORE_REPOS[@]}"; do
+      name="${kv%%=*}"
+      url="${kv#*=}"
+      if [ "$name" = "$core" ]; then
+        printf '%s\n' "$url"
         return 0
+      fi
+    done
+    return 1
+  }
+
+
+  list_core_repos() {
+    local kv name url
+    if [ "${#AVAILABLE_CORES[@]}" -eq 0 ]; then
+      printf "No cores configured in CORE_REPOS\n"
+      return 0
     fi
-
-    echo -e "${BLUE}Cloning $CORE_NAME from $REPO_URL...${NC}"
-    git clone --depth=1 "$REPO_URL" "$TARGET_DIR"
-    echo -e "${GREEN}✓ $CORE_NAME cloned successfully${NC}"
-}
-
-# Main
-echo -e "${GREEN}=== Setup Libretro Cores ===${NC}\n"
-
-if [ $# -eq 0 ]; then
-    echo -e "${BLUE}Cloning all core repositories...${NC}\n"
-    for core in "${AVAILABLE_CORES[@]}"; do
-        clone_core "$core"
+    printf 'Available cores (%d):\n\n' "${#AVAILABLE_CORES[@]}"
+    for kv in "${CORE_REPOS[@]}"; do
+      name="${kv%%=*}"
+      url="${kv#*=}"
+      printf '  - %-12s -> %s\n' "${name}" "${url}"
     done
-else
-    echo -e "${BLUE}Cloning specified cores: $@${NC}\n"
-    for core in "$@"; do
-        local repo_url=$(get_core_repo "$core")
-        if [ -z "$repo_url" ]; then
-            echo -e "${RED}Error: Unknown core '$core'${NC}"
-            echo -e "Available cores: ${AVAILABLE_CORES[*]}"
-            exit 1
-        fi
-        clone_core "$core"
-    done
+  }
+
+
+  is_core_known() {
+    get_core_repo "$1" >/dev/null 2>&1
+    return $?
+  }
 fi
 
-echo -e "\n${GREEN}=== Setup Complete! ===${NC}"
-echo -e "${YELLOW}You can now run: ./build-cores.sh <core_name>${NC}"
+
+
+print_usage() {
+  echo -e "${BLUE}Usage:${NC}"
+  echo -e "  $0                  # clone all cores"
+  echo -e "  $0 <core> [others]  # clone specific cores"
+  echo -e "  $0 list             # show available cores & repository URLs"
+  echo -e ""
+  echo -e "${BLUE}Available cores:${NC}"
+  for core in "${AVAILABLE_CORES[@]}"; do
+    echo -e "  - $core"
+  done
+  echo ""
+  echo -e "${BLUE}Examples:${NC}"
+  echo -e "  $0 fceumm"
+  echo -e "  $0 fceumm snes9x"
+  echo -e "  $0 all"
+}
+
+
+clone_core() {
+  local CORE_NAME="$1"
+  local REPO_URL
+
+
+  REPO_URL=$(get_core_repo "$CORE_NAME" 2>/dev/null || true)
+
+  if [ -z "$REPO_URL" ]; then
+    echo -e "${RED}Error: Unknown core '$CORE_NAME'${NC}"
+    echo -e "Available cores: ${AVAILABLE_CORES[*]}"
+    return 1
+  fi
+
+  local TARGET_DIR="$PROJECT_ROOT/libretro-$CORE_NAME"
+  if [ -d "$TARGET_DIR" ]; then
+    echo -e "${YELLOW}Directory $TARGET_DIR already exists, skipping...${NC}"
+    return 0
+  fi
+
+  echo -e "${BLUE}Cloning $CORE_NAME from $REPO_URL...${NC}"
+  git clone --depth=1 "$REPO_URL" "$TARGET_DIR"
+  echo -e "${GREEN}✓ $CORE_NAME cloned successfully${NC}"
+  return 0
+}
+
+
+check_git() {
+  if ! command -v git >/dev/null 2>&1; then
+    echo -e "${RED}Error: git not found. Please install git to clone repositories.${NC}"
+    return 1
+  fi
+  return 0
+}
+
+
+main_setup() {
+  # Fail fast for the main flow only
+  set -e
+
+
+  echo -e "${GREEN}=== Setup Libretro Cores ===${NC}\n"
+
+
+  check_git || exit 1
+
+  if [ $# -eq 0 ]; then
+    echo -e "${BLUE}Cloning all configured core repositories...${NC}\n"
+    for core in "${AVAILABLE_CORES[@]}"; do
+      clone_core "$core" || true
+    done
+  else
+    if [ "$1" = "list" ]; then
+      list_core_repos
+      return 0
+    fi
+
+    if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+      print_usage
+      return 0
+    fi
+
+    echo -e "${BLUE}Cloning specified cores: $@${NC}\n"
+    for core in "$@"; do
+      if ! is_core_known "$core"; then
+        echo -e "${RED}Error: Unknown core '$core'${NC}"
+        echo -e "Available cores: ${AVAILABLE_CORES[*]}"
+        exit 1
+      fi
+      clone_core "$core"
+    done
+  fi
+
+  echo -e "\n${GREEN}=== Setup Complete! ===${NC}"
+  echo -e "${YELLOW}You can now run: ./build-cores.sh <core_name>${NC}"
+}
+
+
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  # Pass all arguments through to main_setup
+  main_setup "$@"
+fi
