@@ -18,9 +18,9 @@ if [ -z "${SETUP_CORES_CONFIG_LOADED:-}" ]; then
   SETUP_CORES_CONFIG_LOADED=1
 
   CORE_REPOS=(
-    "fceumm=https://github.com/libretro/libretro-fceumm.git"
-    "snes9x=https://github.com/libretro/snes9x.git"
-    "mgba=https://github.com/libretro/mgba.git"
+    "fceumm=https://github.com/rebitplay/libretro-fceumm.git"
+    "snes9x=https://github.com/rebitplay/snes9x.git"
+    "mgba=https://github.com/rebitplay/mgba.git"
   )
 
 
