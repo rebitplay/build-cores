@@ -123,7 +123,7 @@ build_core() {
         return 1
     fi
 
-    local CORE_DIR="$PROJECT_ROOT/libretro-$CORE_NAME"
+    local CORE_DIR="$PROJECT_ROOT/cores/libretro-$CORE_NAME"
 
     echo -e "\n${GREEN}========================================${NC}"
     echo -e "${GREEN}Building ${CORE_NAME} core${NC}"

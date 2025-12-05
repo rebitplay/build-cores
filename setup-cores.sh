@@ -102,7 +102,12 @@ clone_core() {
     return 1
   fi
 
-  local TARGET_DIR="$PROJECT_ROOT/libretro-$CORE_NAME"
+  local CORES_DIR="$PROJECT_ROOT/cores"
+  local TARGET_DIR="$CORES_DIR/libretro-$CORE_NAME"
+
+  # Create cores directory if it doesn't exist
+  mkdir -p "$CORES_DIR"
+
   if [ -d "$TARGET_DIR" ]; then
     echo -e "${YELLOW}Directory $TARGET_DIR already exists, skipping...${NC}"
     return 0
