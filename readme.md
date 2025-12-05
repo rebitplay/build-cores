@@ -98,17 +98,18 @@ Top-level build/ (convenience copy of created artifacts):
 .
 ├── build-cores.sh          # Main build script
 ├── setup-cores.sh          # Clone core repositories
-├── build-fceumm.sh        # Legacy build script (deprecated)
-├── RetroArch/             # RetroArch repository
-├── libretro-fceumm/       # FCEUMM core (clone with setup-cores.sh)
-├── libretro-snes9x/       # SNES9X core (clone with setup-cores.sh)
-├── libretro-mgba/         # mGBA core (clone with setup-cores.sh)
-├── Makefile               # Helper Makefile to build/clean cores (default: build all)
-└── web/                   # Build output directory
-	 ├── fceumm_libretro.js
-	 ├── fceumm_libretro.wasm
-	 ├── retroarch.cfg
-	 └── assets/            # RetroArch assets (download separately)
+├── Makefile                # Helper Makefile to build/clean cores (default: build all)
+├── RetroArch/              # RetroArch repository
+├── cores/                  # Core repositories (cloned with setup-cores.sh)
+│   ├── libretro-fceumm/
+│   ├── libretro-snes9x/
+│   └── libretro-mgba/
+├── build/                  # Build output directory (convenience copy)
+└── web/                    # Build output directory (for web player)
+    ├── fceumm_libretro.js
+    ├── fceumm_libretro.wasm
+    ├── retroarch.cfg
+    └── assets/             # RetroArch assets (download separately)
 ```
 
 ## Configuration
