@@ -21,6 +21,7 @@ if [ -z "${SETUP_CORES_CONFIG_LOADED:-}" ]; then
     "fceumm=https://github.com/rebitplay/libretro-fceumm.git"
     "snes9x=https://github.com/rebitplay/snes9x.git"
     "mgba=https://github.com/rebitplay/mgba.git"
+    "pcsx_rearmed=https://github.com/rebitplay/pcsx_rearmed.git"
   )
 
 
