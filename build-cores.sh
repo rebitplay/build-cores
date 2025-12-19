@@ -148,7 +148,8 @@ build_core() {
     local CORENAME=$(echo $CORE_CONFIG | cut -d: -f2)
     local MAKEFILE=$(echo $CORE_CONFIG | cut -d: -f3)
     local BUILD_DIR="$CORE_DIR/$BUILD_SUBDIR"
-    local CORE_FILE="${CORENAME}_libretro_emscripten.bc"
+    local CORE_FILE_BC="${CORENAME}_libretro_emscripten.bc"
+    local CORE_FILE_A="${CORENAME}_libretro_emscripten.a"
 
     echo -e "${BLUE}  CORENAME: ${CORENAME}${NC}"
     echo -e "${BLUE}  BUILD_DIR: ${BUILD_SUBDIR}${NC}"
@@ -157,37 +158,63 @@ build_core() {
     # Build the core
     # For cores with Makefile in root (e.g., mgba), run from root directory
     # For cores with Makefile in subdirectory (e.g., snes9x), run from subdirectory
+    # For cores with CMakeLists.txt (e.g., melonds-ds), use CMake
     echo -e "\n${BLUE}Step 1: Building ${CORE_NAME} core...${NC}"
     cd "$CORE_DIR"
 
-    # Check where the Makefile actually is
+    # Check where the Makefile or CMakeLists.txt actually is
     local ACTUAL_BUILD_DIR=""
     if [ -f "$MAKEFILE" ]; then
         # Makefile is in core root - run from here
         emmake make -f "$MAKEFILE" platform=emscripten clean
-        emmake make -f "$MAKEFILE" platform=emscripten
+        emmake make -f "$MAKEFILE" platform=emscripten STATIC_LINKING=1
         ACTUAL_BUILD_DIR="$CORE_DIR"
     elif [ -f "$BUILD_DIR/$MAKEFILE" ]; then
         # Makefile is in build subdirectory - cd there and run
         cd "$BUILD_DIR"
         emmake make -f "$MAKEFILE" platform=emscripten clean
-        emmake make -f "$MAKEFILE" platform=emscripten
+        emmake make -f "$MAKEFILE" platform=emscripten STATIC_LINKING=1
         ACTUAL_BUILD_DIR="$BUILD_DIR"
+    elif [ -f "CMakeLists.txt" ] || [ -f "$BUILD_DIR/CMakeLists.txt" ]; then
+        # CMake based core
+        local CMAKE_ROOT="$CORE_DIR"
+        [ -f "$BUILD_DIR/CMakeLists.txt" ] && CMAKE_ROOT="$BUILD_DIR"
+
+        echo -e "${BLUE}  Using CMake for ${CORE_NAME}...${NC}"
+        mkdir -p "$CORE_DIR/build_emscripten"
+        cd "$CORE_DIR/build_emscripten"
+        emcmake cmake "$CMAKE_ROOT" -DPLATFORM=Emscripten -DSTATIC_LINKING=1 -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DENABLE_OPENGL=OFF
+        emmake make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+        ACTUAL_BUILD_DIR="$CORE_DIR/build_emscripten"
+
+        # CMake might name the output differently, try to find it
+        # melondsds -> melondsds_libretro_emscripten.a
+        if [ ! -f "$ACTUAL_BUILD_DIR/$CORE_FILE_A" ] && [ ! -f "$ACTUAL_BUILD_DIR/$CORE_FILE_BC" ]; then
+            local FOUND_LIB=$(find . -name "*_libretro*.a" -o -name "*_libretro*.bc" | head -1)
+            if [ -n "$FOUND_LIB" ]; then
+                echo -e "${YELLOW}  Found library at $FOUND_LIB, using it as $CORE_FILE_A${NC}"
+                cp "$FOUND_LIB" "$ACTUAL_BUILD_DIR/$CORE_FILE_A"
+            fi
+        fi
     else
-        echo -e "${RED}Error: Cannot find $MAKEFILE in $CORE_DIR or $BUILD_DIR${NC}"
+        echo -e "${RED}Error: Cannot find $MAKEFILE or CMakeLists.txt in $CORE_DIR or $BUILD_DIR${NC}"
         return 1
     fi
 
     # Check if the core was built successfully
     # Output location varies: some cores output to BUILD_DIR, others to root
     local CORE_OUTPUT=""
-    if [ -f "$BUILD_DIR/$CORE_FILE" ]; then
-        CORE_OUTPUT="$BUILD_DIR/$CORE_FILE"
-    elif [ -f "$CORE_DIR/$CORE_FILE" ]; then
-        CORE_OUTPUT="$CORE_DIR/$CORE_FILE"
+    if [ -f "$BUILD_DIR/$CORE_FILE_A" ]; then
+        CORE_OUTPUT="$BUILD_DIR/$CORE_FILE_A"
+    elif [ -f "$CORE_DIR/$CORE_FILE_A" ]; then
+        CORE_OUTPUT="$CORE_DIR/$CORE_FILE_A"
+    elif [ -f "$BUILD_DIR/$CORE_FILE_BC" ]; then
+        CORE_OUTPUT="$BUILD_DIR/$CORE_FILE_BC"
+    elif [ -f "$CORE_DIR/$CORE_FILE_BC" ]; then
+        CORE_OUTPUT="$CORE_DIR/$CORE_FILE_BC"
     else
         echo -e "${RED}Error: ${CORE_NAME} core build failed!${NC}"
-        echo -e "${RED}Expected file: $BUILD_DIR/$CORE_FILE or $CORE_DIR/$CORE_FILE${NC}"
+        echo -e "${RED}Expected file: $CORE_FILE_A or $CORE_FILE_BC in $BUILD_DIR or $CORE_DIR${NC}"
         return 1
     fi
 
@@ -202,6 +229,7 @@ build_core() {
     fi
 
     # Copy the core to RetroArch directory
+    # RetroArch Makefile.emscripten expects libretro_emscripten.bc and renames it to .a
     echo -e "\n${BLUE}Step 2: Copying ${CORE_NAME} core to RetroArch...${NC}"
     cp "$CORE_OUTPUT" "$RETROARCH_DIR/libretro_emscripten.bc"    # Build RetroArch with the core
     echo -e "\n${BLUE}Step 3: Building RetroArch web player with ${CORE_NAME}...${NC}"

@@ -45,7 +45,7 @@ clean-core:
 help:
 	@echo "Makefile targets:"
 	@echo "  make            # build all cores (default)"
-	@echo "  make build CORES=all|fceumm|snes9x|mgba  # build specific cores"
+	@echo "  make build CORES=all|fceumm|snes9x|mgba|melonds     # build specific cores"
 	@echo "  make build-core CORE=fceumm             # build one core"
 	@echo "  make clean                              # remove build/ and per-core outputs in web/"
 	@echo "  make clean-core CORE=fceumm             # remove outputs for a single core"

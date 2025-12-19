@@ -22,6 +22,7 @@ if [ -z "${SETUP_CORES_CONFIG_LOADED:-}" ]; then
     "snes9x=https://github.com/rebitplay/snes9x.git"
     "mgba=https://github.com/rebitplay/mgba.git"
     "pcsx_rearmed=https://github.com/rebitplay/pcsx_rearmed.git"
+    "melonds=https://github.com/rebitplay/melonDS.git"
   )
 
 
@@ -115,7 +116,7 @@ clone_core() {
   fi
 
   echo -e "${BLUE}Cloning $CORE_NAME from $REPO_URL...${NC}"
-  git clone --depth=1 "$REPO_URL" "$TARGET_DIR"
+  git clone --depth=1 --recursive "$REPO_URL" "$TARGET_DIR"
   echo -e "${GREEN}✓ $CORE_NAME cloned successfully${NC}"
   return 0
 }
