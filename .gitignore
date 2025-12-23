@@ -1,3 +1,5 @@
+.trae/
+
 # Core repositories (cloned by setup-cores.sh)
 libretro-fceumm/
 libretro-snes9x/
@@ -8,6 +10,7 @@ web/*.js
 web/*.wasm
 web/*.data
 web/*.wasm.map
+web/node_modules
 build/
 
 # Compiled objects
