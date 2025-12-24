@@ -204,6 +204,32 @@ build_core() {
         local CORE_CFLAGS="-Oz -emit-llvm"
         CFLAGS="$CORE_CFLAGS" emmake make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) -f "$MAKEFILE" platform=emscripten STATIC_LINKING=1
         ACTUAL_BUILD_DIR="$BUILD_DIR"
+    elif [ "$CORE_NAME" == "sameboy" ] || [ "$CORE_NAME" == "melonds" ]; then
+        # If core is sameboy or melonds, use -Oz to fix section too large errors
+        local CORE_CFLAGS="-Oz -ffunction-sections -fdata-sections -fno-asynchronous-unwind-tables"
+        local CORE_LDFLAGS="-Wl,--gc-sections"
+
+        # Patch core's Makefile if it exists
+        if [ -f "$MAKEFILE" ]; then
+            echo "Patching core Makefile for size optimization and extra flags..."
+            sed -i.bak 's/-O2/-Oz/g' "$MAKEFILE"
+            sed -i.bak 's/-O3/-Oz/g' "$MAKEFILE"
+            sed -i.bak 's/-fPIC//g' "$MAKEFILE"
+            # Append our special flags to CFLAGS and CXXFLAGS in the Makefile
+            # This ensures they are used alongside the Makefile's own flags (like MELONDS_VERSION)
+            sed -i.bak "s|^CFLAGS   +=|CFLAGS   += $CORE_CFLAGS |g" "$MAKEFILE"
+            sed -i.bak "s|^CXXFLAGS +=|CXXFLAGS += $CORE_CFLAGS |g" "$MAKEFILE"
+            sed -i.bak "s|^LDFLAGS  +=|LDFLAGS  += $CORE_LDFLAGS |g" "$MAKEFILE"
+        fi
+
+        echo -e "${YELLOW}  Using special flags for ${CORE_NAME}: $CORE_CFLAGS $CORE_LDFLAGS${NC}"
+        # Still export them just in case, but don't pass as command line args to avoid overriding
+        export CFLAGS="$CORE_CFLAGS"
+        export CXXFLAGS="$CORE_CFLAGS"
+        export LDFLAGS="$CORE_LDFLAGS"
+        emmake make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) -f "$MAKEFILE" platform=emscripten STATIC_LINKING=1 \
+            AR="emar" RANLIB="emranlib"
+        ACTUAL_BUILD_DIR="$CORE_DIR"
     elif [ -f "$MAKEFILE" ]; then
         emmake make -f "$MAKEFILE" platform=emscripten clean
         local CORE_CFLAGS="-Oz -emit-llvm"
@@ -271,16 +297,22 @@ build_core() {
     echo "Cleaning previous RetroArch build..."
     emmake make -f Makefile.emscripten clean
 
-    # Also use -Oz if core is SameBoy to prioritize size over speed
-    if [ "$CORE_NAME" == "sameboy" ]; then
-        echo "Patching RetroArch Makefile.emscripten for SameBoy size optimization..."
+    # Also use -Oz if core is SameBoy or melonDS to prioritize size over speed and fix section size errors
+    if [ "$CORE_NAME" == "sameboy" ] || [ "$CORE_NAME" == "melonds" ]; then
+        echo "Patching RetroArch Makefile.emscripten for ${CORE_NAME} size optimization..."
         sed -i.bak 's/-O3/-Oz/g' Makefile.emscripten
     fi
 
-    emmake make -f Makefile.emscripten LIBRETRO=$CORENAME HAVE_CHEEVOS=1 \
-        -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) all
+    local CHEEVOS_FLAG="HAVE_CHEEVOS=1"
+        if [ "$CORE_NAME" == "melonds" ]; then
+            # MelonDS has a conflict with rcheevos AES symbols
+            CHEEVOS_FLAG="HAVE_CHEEVOS=0"
+        fi
 
-    if [ "$CORE_NAME" == "sameboy" ] && [ -f Makefile.emscripten.bak ]; then
+        emmake make -f Makefile.emscripten LIBRETRO=$CORENAME $CHEEVOS_FLAG \
+            -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) all
+
+    if ([ "$CORE_NAME" == "sameboy" ] || [ "$CORE_NAME" == "melonds" ]) && [ -f Makefile.emscripten.bak ]; then
         mv Makefile.emscripten.bak Makefile.emscripten
     fi
 
