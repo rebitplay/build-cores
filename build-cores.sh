@@ -28,10 +28,34 @@ source "$PROJECT_ROOT/setup-cores.sh"
 # Function to parse .gitlab-ci.yml for core configuration
 parse_gitlab_ci() {
     local core_dir=$1
-    local gitlab_file="$core_dir/.gitlab-ci.yml"
+    local gitlab_file=""
 
-    if [ ! -f "$gitlab_file" ]; then
-        echo -e "${RED}Error: .gitlab-ci.yml not found in $core_dir${NC}"
+    # Check potential locations for gitlab-ci.yml
+    local locations=(
+        "$core_dir/.gitlab-ci.yml"
+        "$core_dir/libretro/.gitlab-ci.yml"
+        "$core_dir/libretro/gitlab-ci.yml"
+    )
+
+    for loc in "${locations[@]}"; do
+        if [ -f "$loc" ]; then
+            # If found in libretro folder, copy it to the root as .gitlab-ci.yml
+            # This matches the behavior in SameBoy's update_libretro.sh
+            if [[ "$loc" == *"/libretro/"* ]]; then
+                if [ "$loc" != "$core_dir/.gitlab-ci.yml" ]; then
+                    echo -e "${YELLOW}Copying $loc to $core_dir/.gitlab-ci.yml${NC}"
+                    cp "$loc" "$core_dir/.gitlab-ci.yml"
+                fi
+                gitlab_file="$core_dir/.gitlab-ci.yml"
+            else
+                gitlab_file="$loc"
+            fi
+            break
+        fi
+    done
+
+    if [ -z "$gitlab_file" ]; then
+        echo -e "${RED}Error: .gitlab-ci.yml not found in $core_dir or $core_dir/libretro/${NC}"
         return 1
     fi
 
@@ -47,8 +71,13 @@ parse_gitlab_ci() {
     # Default MAKEFILE if not specified
     makefile="${makefile:-Makefile}"
 
-    # Output format: BUILD_DIR:CORENAME:MAKEFILE
-    echo "${build_dir}:${corename}:${makefile}"
+    # Extract before_script commands
+    # This looks for the before_script: section and extracts lines starting with '-' until the next top-level key
+    # We use a special delimiter for commands to handle multiline scripts correctly
+    local before_script=$(sed -n '/^  before_script:/,/^[[:alnum:]]/p' "$gitlab_file" | grep "^    - " | sed 's/^    - //' | tr '\n' '|')
+
+    # Output format: BUILD_DIR:CORENAME:MAKEFILE:BEFORE_SCRIPT
+    echo "${build_dir}:${corename}:${makefile}:${before_script}"
 }
 
 # Function to print usage
@@ -147,6 +176,7 @@ build_core() {
     local BUILD_SUBDIR=$(echo $CORE_CONFIG | cut -d: -f1)
     local CORENAME=$(echo $CORE_CONFIG | cut -d: -f2)
     local MAKEFILE=$(echo $CORE_CONFIG | cut -d: -f3)
+    local BEFORE_SCRIPT=$(echo $CORE_CONFIG | cut -d: -f4-)
     local BUILD_DIR="$CORE_DIR/$BUILD_SUBDIR"
     local CORE_FILE_BC="${CORENAME}_libretro_emscripten.bc"
     local CORE_FILE_A="${CORENAME}_libretro_emscripten.a"
@@ -154,6 +184,9 @@ build_core() {
     echo -e "${BLUE}  CORENAME: ${CORENAME}${NC}"
     echo -e "${BLUE}  BUILD_DIR: ${BUILD_SUBDIR}${NC}"
     echo -e "${BLUE}  MAKEFILE: ${MAKEFILE}${NC}"
+    if [ -n "$BEFORE_SCRIPT" ]; then
+        echo -e "${BLUE}  BEFORE_SCRIPT commands detected${NC}"
+    fi
 
     # Build the core
     # For cores with Makefile in root (e.g., mgba), run from root directory
@@ -162,18 +195,48 @@ build_core() {
     echo -e "\n${BLUE}Step 1: Building ${CORE_NAME} core...${NC}"
     cd "$CORE_DIR"
 
+    # Specific fix for SameBoy: build bootroms if needed
+    if [ "$CORE_NAME" == "sameboy" ]; then
+        echo -e "${YELLOW}Special build steps for SameBoy: building bootroms...${NC}"
+        # SameBoy requires bootroms to be built and placed in a specific directory
+        # as expected by its libretro/gitlab-ci.yml before_script.
+        # We use standard make (not emmake) for bootroms as they are native/binary files
+        make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) bootroms
+        mkdir -p BootROMs/prebuilt
+        cp build/bin/BootROMs/*.bin BootROMs/prebuilt/ 2>/dev/null || true
+    fi
+
+    # Execute before_script if present
+    if [ -n "$BEFORE_SCRIPT" ]; then
+        echo -e "${YELLOW}Running before_script commands...${NC}"
+        # Split by '|' and execute
+        IFS='|' read -ra ADDR <<< "$BEFORE_SCRIPT"
+        for cmd in "${ADDR[@]}"; do
+            if [ -n "$cmd" ]; then
+                echo -e "${BLUE}  Executing: $cmd${NC}"
+                eval "$cmd"
+            fi
+        done
+    fi
+
     # Check where the Makefile or CMakeLists.txt actually is
     local ACTUAL_BUILD_DIR=""
     if [ -f "$MAKEFILE" ]; then
         # Makefile is in core root - run from here
         emmake make -f "$MAKEFILE" platform=emscripten clean
-        emmake make -f "$MAKEFILE" platform=emscripten STATIC_LINKING=1
+        # For SameBoy, ensure platform=emscripten is passed early to override macOS detection
+        # Also add flags to reduce section size
+        local CORE_CFLAGS="-fno-asynchronous-unwind-tables"
+        [ "$CORE_NAME" == "sameboy" ] && CORE_CFLAGS="$CORE_CFLAGS -O2"
+        emmake make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) -f "$MAKEFILE" platform=emscripten STATIC_LINKING=1 CFLAGS="$CORE_CFLAGS"
         ACTUAL_BUILD_DIR="$CORE_DIR"
     elif [ -f "$BUILD_DIR/$MAKEFILE" ]; then
         # Makefile is in build subdirectory - cd there and run
         cd "$BUILD_DIR"
         emmake make -f "$MAKEFILE" platform=emscripten clean
-        emmake make -f "$MAKEFILE" platform=emscripten STATIC_LINKING=1
+        local CORE_CFLAGS="-fno-asynchronous-unwind-tables"
+        [ "$CORE_NAME" == "sameboy" ] && CORE_CFLAGS="$CORE_CFLAGS -O2"
+        emmake make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) -f "$MAKEFILE" platform=emscripten STATIC_LINKING=1 CFLAGS="$CORE_CFLAGS"
         ACTUAL_BUILD_DIR="$BUILD_DIR"
     elif [ -f "CMakeLists.txt" ] || [ -f "$BUILD_DIR/CMakeLists.txt" ]; then
         # CMake based core
@@ -236,7 +299,15 @@ build_core() {
     cd "$RETROARCH_DIR"
     echo "Cleaning previous RetroArch build..."
     emmake make -f Makefile.emscripten clean
-    emmake make -f Makefile.emscripten LIBRETRO=$CORENAME HAVE_XMB=1 HAVE_OZONE=1 HAVE_MATERIALUI=1 HAVE_CHEEVOS=1 -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) all
+
+    # Add -fno-asynchronous-unwind-tables to reduce section sizes and avoid "section too large" errors
+    # Also use -O2 if core is SameBoy to further reduce size
+    local RARCH_FLAGS="-fno-asynchronous-unwind-tables"
+    if [ "$CORE_NAME" == "sameboy" ]; then
+        RARCH_FLAGS="$RARCH_FLAGS -O2"
+    fi
+
+    emmake make -f Makefile.emscripten LIBRETRO=$CORENAME HAVE_CHEEVOS=1 LDFLAGS="$RARCH_FLAGS" CFLAGS="$RARCH_FLAGS" -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) all
 
     # Check if RetroArch was built successfully
     if [ ! -f "$RETROARCH_DIR/${CORENAME}_libretro.js" ] || [ ! -f "$RETROARCH_DIR/${CORENAME}_libretro.wasm" ]; then
