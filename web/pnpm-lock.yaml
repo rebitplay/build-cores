@@ -7,10 +7,6 @@ settings:
 importers:
 
   .:
-    dependencies:
-      nostalgist:
-        specifier: latest
-        version: 0.19.1
     devDependencies:
       vite:
         specifier: ^7.3.0
@@ -284,17 +280,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@types/emscripten@1.41.5':
-    resolution: {integrity: sha512-cMQm7pxu6BxtHyqJ7mQZ2kXWV5SLmugybFdHCBbJ5eHzOo6VhBckEgAT3//rP5FwPHNPeEiq4SmQ5ucBwsOo4Q==}
-
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
-
-  '@types/ini@4.1.1':
-    resolution: {integrity: sha512-MIyNUZipBTbyUNnhvuXJTY7B6qNI78meck9Jbv3wk0OgNwRyOOVEKDutAkOs1snB/tx0FafyR6/SN4Ps0hZPeg==}
-
-  '@types/path-browserify@1.0.3':
-    resolution: {integrity: sha512-ZmHivEbNCBtAfcrFeBCiTjdIc2dey0l7oCGNGpSuRTy8jP6UVND7oUowlvDujBy8r2Hoa8bfFUOCiPWfmtkfxw==}
 
   esbuild@0.27.2:
     resolution: {integrity: sha512-HyNQImnsOC7X9PMNaCIeAm4ISCQXs5a5YasTXVliKv4uuBo1dKrG0A+uQS8M5eXjVMnLg3WgXaKvprHlFJQffw==}
@@ -319,10 +306,6 @@ packages:
     resolution: {integrity: sha512-N8SpfPUnUp1bK+PMYW8qSWdl9U+wwNWI4QKxOYDy9JAro3WMX7p2OeVRF9v+347pnakNevPmiHhNmZ2HbFA76w==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
-
-  nostalgist@0.19.1:
-    resolution: {integrity: sha512-nCKguVVAJwLouV/DuA8+g4h2GqAKDQN2qEtviGvLVD4CQa8umsa+LvP5IrXl8aFGK9Qvq+O/ZZRSYUj+HcgqBg==}
-    engines: {node: '>=24.7.0'}
 
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
@@ -534,13 +517,7 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.54.0':
     optional: true
 
-  '@types/emscripten@1.41.5': {}
-
   '@types/estree@1.0.8': {}
-
-  '@types/ini@4.1.1': {}
-
-  '@types/path-browserify@1.0.3': {}
 
   esbuild@0.27.2:
     optionalDependencies:
@@ -579,12 +556,6 @@ snapshots:
     optional: true
 
   nanoid@3.3.11: {}
-
-  nostalgist@0.19.1:
-    dependencies:
-      '@types/emscripten': 1.41.5
-      '@types/ini': 4.1.1
-      '@types/path-browserify': 1.0.3
 
   picocolors@1.1.1: {}
 

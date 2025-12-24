@@ -31,6 +31,7 @@ build-core:
 clean:
 	@echo "Cleaning build/ and web/*_libretro.* artifacts..."
 	@rm -rf build
+	@rm -rf RetroArch/obj-embscripten
 	@find web -maxdepth 1 -type f -name "*_libretro.*" -print -delete || true
 	@echo "Clean complete."
 
@@ -49,3 +50,6 @@ help:
 	@echo "  make build-core CORE=fceumm             # build one core"
 	@echo "  make clean                              # remove build/ and per-core outputs in web/"
 	@echo "  make clean-core CORE=fceumm             # remove outputs for a single core"
+
+playground:
+	cd web && pnpm run dev

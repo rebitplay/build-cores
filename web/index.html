@@ -27,9 +27,17 @@
 <body>
   <div class="toolbar">
     <button type="button" id="launch-button">Launch</button>
-    <button type="button" id="pause-button">Pause</button>
+    <button type="button" id="toggle-menu">Toggle Menu</button>
+    <button type="button" id="pause-button">Pause toggle</button>
+    <button type="button" id="ff-button">Fast Forward</button>
     <button type="button" id="speed2x-button">2x</button>
     <button type="button" id="speed4x-button">4x</button>
+    <button type="button" id="speed6x-button">6x</button>
+    <button type="button" id="speed8x-button">8x</button>
+    <fieldset>
+      <button type="button" id="get-config-button">Get config</button>
+      <input type="text" id="config-input" placeholder="Enter config key">
+    </fieldset>
   </div>
 
   <div class="container">
@@ -37,43 +45,117 @@
   </div>
 
   <script type="module">
-    import { Nostalgist } from 'https://esm.run/nostalgist'
+    import { Nostalgist } from './nostalgist.js'
 
     let game = null;
+    let module = null;
     let started = false
+    let preparePromise = null
 
-    async function launchGame() {
-      game = await Nostalgist.launch({
+    function getLaunchOptions() {
+      return {
         core: 'fceumm',
+        resolveCoreJs(core, options) {
+          // return 'http://p.rebit.cc/web.libretro.com/fceumm_libretro.js';
+          console.log('core', core)
+          return `/${core}_libretro.js`
+        },
+        resolveCoreWasm(core, options) {
+          // return 'http://p.rebit.cc/web.libretro.com/fceumm_libretro.wasm';
+          console.log('core wasm', core)
+          return `/${core}_libretro.wasm`
+        },
         rom: 'flappybird.nes',
         element: document.getElementById('game-canvas'),
         style: {
           position: 'relative',
-          width: '500px',
+          width: '600px',
           height: '400px',
-        }
-      })
-
-      started = true
-
-      bindEvents()
+        },
+        retroarchConfig: {
+          video_vsync: false,
+          video_swap_interval: 0,
+          video_shader_enable: false,
+          audio_mute_enable: true,
+          audio_mixer_mute_enable: true,
+          fps_show: true
+        },
+        retroarchCoreConfig: {
+        },
+      }
     }
 
-    document.getElementById('launch-button').addEventListener('click', launchGame)
+    async function prepareGame() {
+      if (!preparePromise) {
+        preparePromise = Nostalgist.prepare(getLaunchOptions())
+      }
+      game = await preparePromise
+      return game
+    }
+
+    async function startGame() {
+      await prepareGame()
+      if (started) return
+
+      await game.start()
+      started = true
+
+      console.log('game', game)
+      module = game.getEmscriptenModule();
+      console.log('module', module)
+    }
+
+    prepareGame()
+
+    document.getElementById('launch-button').addEventListener('click', async () => {
+      await startGame()
+    })
 
     function bindEvents() {
       document.getElementById('pause-button').addEventListener('click', () => {
-        game.pause()
+        if (!started) return
+        game.sendCommand('PAUSE_TOGGLE')
+      })
+
+      document.getElementById('ff-button').addEventListener('click', () => {
+        if (!started) return
+        game.sendCommand('FAST_FORWARD')
       })
 
       document.getElementById('speed2x-button').addEventListener('click', () => {
-        game.setSpeed(2)
+        if (!started) return
+        module._cmd_set_fastforward_ratio(2.0)
       })
 
       document.getElementById('speed4x-button').addEventListener('click', () => {
-        game.setSpeed(4)
+        if (!started) return
+        module._cmd_set_fastforward_ratio(4.0)
+      })
+
+      document.getElementById('speed6x-button').addEventListener('click', () => {
+        if (!started) return
+        module._cmd_set_fastforward_ratio(6.0)
+      })
+
+      document.getElementById('speed8x-button').addEventListener('click', () => {
+        if (!started) return
+        module._cmd_set_fastforward_ratio(8.0)
+      })
+
+      document.getElementById('get-config-button').addEventListener('click', () => {
+        if (!started) return
+        const configKey = document.getElementById('config-input').value
+        const configValue = game.sendCommand('GET_CONFIG ' + configKey)
+        console.log('configValue', configValue)
+      })
+
+      document.getElementById('toggle-menu').addEventListener('click', () => {
+        if (!started) return
+        game.sendCommand('MENU_TOGGLE')
       })
     }
+
+    bindEvents()
   </script>
 </body>
 
