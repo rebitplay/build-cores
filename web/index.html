@@ -54,7 +54,7 @@
 
     function getLaunchOptions() {
       return {
-        core: 'fceumm',
+        core: 'sameboy',
         resolveCoreJs(core, options) {
           // return 'http://p.rebit.cc/web.libretro.com/fceumm_libretro.js';
           console.log('core', core)
@@ -65,7 +65,8 @@
           console.log('core wasm', core)
           return `/${core}_libretro.wasm`
         },
-        rom: 'flappybird.nes',
+        // rom: 'flappybird.nes',
+        rom: 'blastah.gb',
         element: document.getElementById('game-canvas'),
         style: {
           position: 'relative',

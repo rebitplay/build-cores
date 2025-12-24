@@ -12,6 +12,7 @@ web/*.data
 web/*.wasm.map
 web/node_modules
 build/
+cores/
 
 # Compiled objects
 RetroArch/

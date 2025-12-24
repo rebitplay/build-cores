@@ -23,7 +23,7 @@ if [ -z "${SETUP_CORES_CONFIG_LOADED:-}" ]; then
     "mgba=https://github.com/rebitplay/mgba.git"
     "pcsx_rearmed=https://github.com/rebitplay/pcsx_rearmed.git"
     "melonds=https://github.com/rebitplay/melonDS.git"
-    "sameboy=git@github.com:LIJI32/SameBoy.git"
+    "sameboy=git@github.com:LIJI32/SameBoy.git#libretro"
   )
 
 
@@ -117,7 +117,17 @@ clone_core() {
   fi
 
   echo -e "${BLUE}Cloning $CORE_NAME from $REPO_URL...${NC}"
-  git clone --depth=1 --recursive "$REPO_URL" "$TARGET_DIR"
+  local BRANCH=""
+  if [[ "$REPO_URL" == *"#"* ]]; then
+    BRANCH="${REPO_URL#*#}"
+    REPO_URL="${REPO_URL%#*}"
+  fi
+
+  if [ -n "$BRANCH" ]; then
+    git clone --depth=1 --recursive -b "$BRANCH" "$REPO_URL" "$TARGET_DIR"
+  else
+    git clone --depth=1 --recursive "$REPO_URL" "$TARGET_DIR"
+  fi
   echo -e "${GREEN}✓ $CORE_NAME cloned successfully${NC}"
   return 0
 }
