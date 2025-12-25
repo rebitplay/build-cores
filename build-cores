@@ -304,10 +304,10 @@ build_core() {
     fi
 
     local CHEEVOS_FLAG="HAVE_CHEEVOS=1"
-        if [ "$CORE_NAME" == "melonds" ]; then
-            # MelonDS has a conflict with rcheevos AES symbols
-            CHEEVOS_FLAG="HAVE_CHEEVOS=0"
-        fi
+        # if [ "$CORE_NAME" == "melonds" ]; then
+        #     # MelonDS has a conflict with rcheevos AES symbols
+        #     CHEEVOS_FLAG="HAVE_CHEEVOS=0"
+        # fi
 
         emmake make -f Makefile.emscripten LIBRETRO=$CORENAME $CHEEVOS_FLAG \
             -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) all
