@@ -24,6 +24,7 @@ if [ -z "${SETUP_CORES_CONFIG_LOADED:-}" ]; then
     "pcsx_rearmed=https://github.com/rebitplay/pcsx_rearmed.git"
     "melonds=https://github.com/rebitplay/melonDS.git"
     "sameboy=git@github.com:rebitplay/SameBoy.git#libretro"
+    "dosbox_pure=https://github.com/rebitplay/dosbox-pure.git"
   )
 
 

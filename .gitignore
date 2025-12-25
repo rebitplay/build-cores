@@ -23,6 +23,7 @@ libretro-*/*.bc
 libretro-*/*.o
 
 web/assets/
+web/roms/
 
 # macOS
 .DS_Store
