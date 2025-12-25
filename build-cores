@@ -1,0 +1,416 @@
+#!/bin/bash
+
+# Build script for RetroArch cores for Emscripten
+# This script builds one or more libretro cores and RetroArch web player
+# Usage: ./build-cores.sh [core1] [core2] ... or ./build-cores.sh all
+# Example: ./build-cores.sh fceumm snes9x mgba
+
+set -e  # Exit on error
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Get the script directory (project root)
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+RETROARCH_DIR="$PROJECT_ROOT/RetroArch"
+WEB_DIR="$PROJECT_ROOT/web"
+BUILD_OUTPUT_DIR="$PROJECT_ROOT/build"
+
+# Source core repository configuration and helper functions from setup-cores.sh.
+# This file defines CORE_REPOS, AVAILABLE_CORES and lookup helpers (get_core_repo, list_core_repos).
+# shellcheck source=build-cores/setup-cores.sh
+source "$PROJECT_ROOT/setup-cores.sh"
+
+# Function to parse .gitlab-ci.yml for core configuration
+parse_gitlab_ci() {
+    local core_dir=$1
+    local gitlab_file="$core_dir/.gitlab-ci.yml"
+
+    if [ ! -f "$gitlab_file" ]; then
+        echo -e "${RED}Error: .gitlab-ci.yml not found in $core_dir${NC}"
+        return 1
+    fi
+
+    # Parse CORENAME, MAKEFILE_PATH (or JNI_PATH), and MAKEFILE
+    local corename=$(grep -A 10 "^.core-defs:" "$gitlab_file" | grep "CORENAME:" | head -1 | awk '{print $2}' | tr -d '\r\n')
+    local makefile_path=$(grep -A 10 "^.core-defs:" "$gitlab_file" | grep "MAKEFILE_PATH:" | head -1 | awk '{print $2}' | tr -d '\r\n')
+    local jni_path=$(grep -A 10 "^.core-defs:" "$gitlab_file" | grep "JNI_PATH:" | head -1 | awk '{print $2}' | tr -d '\r\n')
+    local makefile=$(grep -A 10 "^.core-defs:" "$gitlab_file" | grep "MAKEFILE:" | head -1 | awk '{print $2}' | tr -d '\r\n')
+
+    # Use MAKEFILE_PATH if available, otherwise use JNI_PATH, default to "."
+    local build_dir="${makefile_path:-${jni_path:-.}}"
+
+    # Default MAKEFILE if not specified
+    makefile="${makefile:-Makefile}"
+
+    # Extract before_script commands
+    # This looks for the before_script: section and extracts lines starting with '-' until the next top-level key
+    # We use a special delimiter for commands to handle multiline scripts correctly
+    local before_script=$(sed -n '/^  before_script:/,/^[[:alnum:]]/p' "$gitlab_file" | grep "^    - " | sed 's/^    - //' | tr '\n' '|')
+
+    # Output format: BUILD_DIR:CORENAME:MAKEFILE:BEFORE_SCRIPT
+    echo "${build_dir}:${corename}:${makefile}:${before_script}"
+}
+
+# Function to print usage
+print_usage() {
+    echo -e "${BLUE}Usage:${NC}"
+    echo -e "  $0 -h | --help"
+    echo -e "  $0 <core1> [core2] [core3] ..."
+    echo -e "  $0 all"
+    echo ""
+    echo -e "${BLUE}Available cores:${NC}"
+    for core in "${AVAILABLE_CORES[@]}"; do
+        echo -e "  - $core"
+    done
+    echo ""
+    echo -e "${BLUE}Examples:${NC}"
+    echo -e "  $0 -h"
+    echo -e "  $0 fceumm"
+    echo -e "  $0 fceumm snes9x"
+    echo -e "  $0 all"
+    echo ""
+    echo -e "${BLUE}Environment variables:${NC}"
+    echo -e "  NO_CLEAN=1  # Skip cleaning JS/WASM outputs before building"
+}
+
+# Function to check if emsdk is available
+check_emsdk() {
+    if ! command -v emcc &> /dev/null; then
+        echo -e "${RED}Error: Emscripten SDK not found!${NC}"
+        echo "Please install and activate emsdk first:"
+        echo "  source /path/to/emsdk/emsdk_env.sh"
+        exit 1
+    fi
+    echo -e "${YELLOW}Emscripten version:${NC}"
+    emcc --version
+}
+
+# Remove generated JS/WASM outputs for a specific core
+clean_js_wasm_outputs_for_core() {
+    local corename="$1"
+    local js="${corename}_libretro.js"
+    local wasm="${corename}_libretro.wasm"
+
+    # Remove from RetroArch output dir if present
+    [ -f "$RETROARCH_DIR/$js" ] && rm -f "$RETROARCH_DIR/$js"
+    [ -f "$RETROARCH_DIR/$wasm" ] && rm -f "$RETROARCH_DIR/$wasm"
+
+    # Remove from web output dir if present
+    [ -f "$WEB_DIR/$js" ] && rm -f "$WEB_DIR/$js"
+    [ -f "$WEB_DIR/$wasm" ] && rm -f "$WEB_DIR/$wasm"
+
+    # Remove from top-level build output dir if present
+    [ -f "$BUILD_OUTPUT_DIR/$js" ] && rm -f "$BUILD_OUTPUT_DIR/$js"
+    [ -f "$BUILD_OUTPUT_DIR/$wasm" ] && rm -f "$BUILD_OUTPUT_DIR/$wasm"
+}
+
+# Remove all generated JS/WASM outputs globally (for safety / fresh build)
+clean_all_js_wasm_outputs() {
+    echo -e "${YELLOW}Cleaning all existing JS/WASM outputs...${NC}"
+    rm -f "$RETROARCH_DIR"/*_libretro.js "$RETROARCH_DIR"/*_libretro.wasm || true
+    rm -f "$WEB_DIR"/*_libretro.js "$WEB_DIR"/*_libretro.wasm || true
+    rm -f "$BUILD_OUTPUT_DIR"/*_libretro.js "$BUILD_OUTPUT_DIR"/*_libretro.wasm || true
+}
+
+# Function to build a single core
+build_core() {
+    local CORE_NAME=$1
+
+    # Check if core is supported
+    if [[ ! " ${AVAILABLE_CORES[@]} " =~ " ${CORE_NAME} " ]]; then
+        echo -e "${RED}Error: Unknown core '${CORE_NAME}'${NC}"
+        echo -e "Available cores: ${AVAILABLE_CORES[*]}"
+        return 1
+    fi
+
+    local CORE_DIR="$PROJECT_ROOT/cores/libretro-$CORE_NAME"
+
+    echo -e "\n${GREEN}========================================${NC}"
+    echo -e "${GREEN}Building ${CORE_NAME} core${NC}"
+    echo -e "${GREEN}========================================${NC}"
+
+    # Check if core directory exists
+    if [ ! -d "$CORE_DIR" ]; then
+        echo -e "${RED}Error: Core directory not found: $CORE_DIR${NC}"
+        echo -e "${YELLOW}You may need to clone the repository first using: ./setup-cores.sh ${CORE_NAME}${NC}"
+        return 1
+    fi
+
+    # Parse core configuration from .gitlab-ci.yml
+    echo -e "\n${BLUE}Parsing .gitlab-ci.yml for build configuration...${NC}"
+    local CORE_CONFIG=$(parse_gitlab_ci "$CORE_DIR")
+    if [ -z "$CORE_CONFIG" ]; then
+        echo -e "${RED}Error: Failed to parse configuration for '${CORE_NAME}'${NC}"
+        return 1
+    fi
+
+    local BUILD_SUBDIR=$(echo $CORE_CONFIG | cut -d: -f1)
+    local CORENAME=$(echo $CORE_CONFIG | cut -d: -f2)
+    local MAKEFILE=$(echo $CORE_CONFIG | cut -d: -f3)
+    local BEFORE_SCRIPT=$(echo $CORE_CONFIG | cut -d: -f4-)
+    local BUILD_DIR="$CORE_DIR/$BUILD_SUBDIR"
+    local CORE_FILE_BC="${CORENAME}_libretro_emscripten.bc"
+    local CORE_FILE_A="${CORENAME}_libretro_emscripten.a"
+
+    echo -e "${BLUE}  CORENAME: ${CORENAME}${NC}"
+    echo -e "${BLUE}  BUILD_DIR: ${BUILD_SUBDIR}${NC}"
+    echo -e "${BLUE}  MAKEFILE: ${MAKEFILE}${NC}"
+    if [ -n "$BEFORE_SCRIPT" ]; then
+        echo -e "${BLUE}  BEFORE_SCRIPT commands detected${NC}"
+    fi
+
+    # Build the core
+    # For cores with Makefile in root (e.g., mgba), run from root directory
+    # For cores with Makefile in subdirectory (e.g., snes9x), run from subdirectory
+    # For cores with CMakeLists.txt (e.g., melonds-ds), use CMake
+    echo -e "\n${BLUE}Step 1: Building ${CORE_NAME} core...${NC}"
+    cd "$CORE_DIR"
+
+    # Specific fix for SameBoy: build bootroms if needed
+    if [ "$CORE_NAME" == "sameboy" ]; then
+        echo -e "${YELLOW}Special build steps for SameBoy: building bootroms...${NC}"
+        # SameBoy requires bootroms to be built and placed in a specific directory
+        # as expected by its .gitlab-ci.yml before_script.
+        # We use standard make (not emmake) for bootroms as they are native/binary files
+        make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) bootroms
+        mkdir -p BootROMs/prebuilt
+        cp build/bin/BootROMs/*.bin BootROMs/prebuilt/ 2>/dev/null || true
+    fi
+
+    # Execute before_script if present
+    if [ -n "$BEFORE_SCRIPT" ]; then
+        echo -e "${YELLOW}Running before_script commands...${NC}"
+        # Split by '|' and execute
+        IFS='|' read -ra ADDR <<< "$BEFORE_SCRIPT"
+        for cmd in "${ADDR[@]}"; do
+            if [ -n "$cmd" ]; then
+                echo -e "${BLUE}  Executing: $cmd${NC}"
+                eval "$cmd"
+            fi
+        done
+    fi
+
+    # Check where the Makefile or CMakeLists.txt actually is
+    local ACTUAL_BUILD_DIR=""
+    if [ -f "$BUILD_DIR/$MAKEFILE" ] && [ "$BUILD_SUBDIR" != "." ]; then
+        cd "$BUILD_DIR"
+        emmake make -f "$MAKEFILE" platform=emscripten clean
+        # Use -emit-llvm to produce LLVM bitcode objects, which are often more compatible with RetroArch's build system
+        local CORE_CFLAGS="-Oz -emit-llvm"
+        CFLAGS="$CORE_CFLAGS" emmake make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) -f "$MAKEFILE" platform=emscripten STATIC_LINKING=1
+        ACTUAL_BUILD_DIR="$BUILD_DIR"
+    elif [ "$CORE_NAME" == "sameboy" ] || [ "$CORE_NAME" == "melonds" ]; then
+        # If core is sameboy or melonds, use -Oz to fix section too large errors
+        local CORE_CFLAGS="-Oz -ffunction-sections -fdata-sections -fno-asynchronous-unwind-tables"
+        local CORE_LDFLAGS="-Wl,--gc-sections"
+
+        # Patch core's Makefile if it exists
+        if [ -f "$MAKEFILE" ]; then
+            echo "Patching core Makefile for size optimization and extra flags..."
+            sed -i.bak 's/-O2/-Oz/g' "$MAKEFILE"
+            sed -i.bak 's/-O3/-Oz/g' "$MAKEFILE"
+            sed -i.bak 's/-fPIC//g' "$MAKEFILE"
+            # Append our special flags to CFLAGS and CXXFLAGS in the Makefile
+            # This ensures they are used alongside the Makefile's own flags (like MELONDS_VERSION)
+            sed -i.bak "s|^CFLAGS   +=|CFLAGS   += $CORE_CFLAGS |g" "$MAKEFILE"
+            sed -i.bak "s|^CXXFLAGS +=|CXXFLAGS += $CORE_CFLAGS |g" "$MAKEFILE"
+            sed -i.bak "s|^LDFLAGS  +=|LDFLAGS  += $CORE_LDFLAGS |g" "$MAKEFILE"
+        fi
+
+        echo -e "${YELLOW}  Using special flags for ${CORE_NAME}: $CORE_CFLAGS $CORE_LDFLAGS${NC}"
+        # Still export them just in case, but don't pass as command line args to avoid overriding
+        export CFLAGS="$CORE_CFLAGS"
+        export CXXFLAGS="$CORE_CFLAGS"
+        export LDFLAGS="$CORE_LDFLAGS"
+        emmake make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) -f "$MAKEFILE" platform=emscripten STATIC_LINKING=1 \
+            AR="emar" RANLIB="emranlib"
+        ACTUAL_BUILD_DIR="$CORE_DIR"
+    elif [ -f "$MAKEFILE" ]; then
+        emmake make -f "$MAKEFILE" platform=emscripten clean
+        local CORE_CFLAGS="-Oz -emit-llvm"
+        CFLAGS="$CORE_CFLAGS" emmake make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) -f "$MAKEFILE" platform=emscripten STATIC_LINKING=1
+        ACTUAL_BUILD_DIR="$CORE_DIR"
+    elif [ -f "CMakeLists.txt" ] || [ -f "$BUILD_DIR/CMakeLists.txt" ]; then
+        # CMake based core
+        local CMAKE_ROOT="$CORE_DIR"
+        [ -f "$BUILD_DIR/CMakeLists.txt" ] && CMAKE_ROOT="$BUILD_DIR"
+
+        echo -e "${BLUE}  Using CMake for ${CORE_NAME}...${NC}"
+        mkdir -p "$CORE_DIR/build_emscripten"
+        cd "$CORE_DIR/build_emscripten"
+        emcmake cmake "$CMAKE_ROOT" -DPLATFORM=Emscripten -DSTATIC_LINKING=1 -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DENABLE_OPENGL=OFF
+        emmake make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+        ACTUAL_BUILD_DIR="$CORE_DIR/build_emscripten"
+
+        # CMake might name the output differently, try to find it
+        # melondsds -> melondsds_libretro_emscripten.a
+        if [ ! -f "$ACTUAL_BUILD_DIR/$CORE_FILE_A" ] && [ ! -f "$ACTUAL_BUILD_DIR/$CORE_FILE_BC" ]; then
+            local FOUND_LIB=$(find . -name "*_libretro*.a" -o -name "*_libretro*.bc" | head -1)
+            if [ -n "$FOUND_LIB" ]; then
+                echo -e "${YELLOW}  Found library at $FOUND_LIB, using it as $CORE_FILE_A${NC}"
+                cp "$FOUND_LIB" "$ACTUAL_BUILD_DIR/$CORE_FILE_A"
+            fi
+        fi
+    else
+        echo -e "${RED}Error: Cannot find $MAKEFILE or CMakeLists.txt in $CORE_DIR or $BUILD_DIR${NC}"
+        return 1
+    fi
+
+    # Check if the core was built successfully
+    # Output location varies: some cores output to BUILD_DIR, others to root
+    local CORE_OUTPUT=""
+    if [ -f "$BUILD_DIR/$CORE_FILE_A" ]; then
+        CORE_OUTPUT="$BUILD_DIR/$CORE_FILE_A"
+    elif [ -f "$CORE_DIR/$CORE_FILE_A" ]; then
+        CORE_OUTPUT="$CORE_DIR/$CORE_FILE_A"
+    elif [ -f "$BUILD_DIR/$CORE_FILE_BC" ]; then
+        CORE_OUTPUT="$BUILD_DIR/$CORE_FILE_BC"
+    elif [ -f "$CORE_DIR/$CORE_FILE_BC" ]; then
+        CORE_OUTPUT="$CORE_DIR/$CORE_FILE_BC"
+    else
+        echo -e "${RED}Error: ${CORE_NAME} core build failed!${NC}"
+        echo -e "${RED}Expected file: $CORE_FILE_A or $CORE_FILE_BC in $BUILD_DIR or $CORE_DIR${NC}"
+        return 1
+    fi
+
+    echo -e "${GREEN}✓ ${CORE_NAME} core built successfully${NC}"
+    echo -e "${GREEN}Core output: $CORE_OUTPUT${NC}"
+
+    # Remove old JS/WASM outputs for this core before building RetroArch (skip if NO_CLEAN)
+    if [ -z "${NO_CLEAN:-}" ]; then
+        clean_js_wasm_outputs_for_core "$CORENAME"
+    else
+        echo -e "${YELLOW}NO_CLEAN set; skipping JS/WASM cleanup for ${CORENAME}${NC}"
+    fi
+
+    # Copy the core to RetroArch directory
+    # RetroArch Makefile.emscripten expects libretro_emscripten.bc and renames it to .a
+    echo -e "\n${BLUE}Step 2: Copying ${CORE_NAME} core to RetroArch...${NC}"
+    cp "$CORE_OUTPUT" "$RETROARCH_DIR/libretro_emscripten.bc"    # Build RetroArch with the core
+    echo -e "\n${BLUE}Step 3: Building RetroArch web player with ${CORE_NAME}...${NC}"
+    cd "$RETROARCH_DIR"
+    echo "Cleaning previous RetroArch build..."
+    emmake make -f Makefile.emscripten clean
+
+    # Also use -Oz if core is SameBoy or melonDS to prioritize size over speed and fix section size errors
+    if [ "$CORE_NAME" == "sameboy" ] || [ "$CORE_NAME" == "melonds" ]; then
+        echo "Patching RetroArch Makefile.emscripten for ${CORE_NAME} size optimization..."
+        sed -i.bak 's/-O3/-Oz/g' Makefile.emscripten
+    fi
+
+    local CHEEVOS_FLAG="HAVE_CHEEVOS=1"
+        if [ "$CORE_NAME" == "melonds" ]; then
+            # MelonDS has a conflict with rcheevos AES symbols
+            CHEEVOS_FLAG="HAVE_CHEEVOS=0"
+        fi
+
+        emmake make -f Makefile.emscripten LIBRETRO=$CORENAME $CHEEVOS_FLAG \
+            -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) all
+
+    if ([ "$CORE_NAME" == "sameboy" ] || [ "$CORE_NAME" == "melonds" ]) && [ -f Makefile.emscripten.bak ]; then
+        mv Makefile.emscripten.bak Makefile.emscripten
+    fi
+
+    # Check if RetroArch was built successfully
+    if [ ! -f "$RETROARCH_DIR/${CORENAME}_libretro.js" ] || [ ! -f "$RETROARCH_DIR/${CORENAME}_libretro.wasm" ]; then
+        echo -e "${RED}Error: RetroArch build failed for ${CORE_NAME}!${NC}"
+        return 1
+    fi
+
+    echo -e "${GREEN}✓ RetroArch built successfully with ${CORE_NAME}${NC}"
+
+    # Copy output files to web directory
+    echo -e "\n${BLUE}Step 4: Copying output to web directory...${NC}"
+    mkdir -p "$WEB_DIR"
+    cp "$RETROARCH_DIR/${CORENAME}_libretro.js" "$WEB_DIR/"
+    cp "$RETROARCH_DIR/${CORENAME}_libretro.wasm" "$WEB_DIR/"
+
+    # Also copy JS/WASM outputs to a top-level build/ directory so they're easy to find
+    echo -e "\n${BLUE}Step 4b: Copying output to build directory (${BUILD_OUTPUT_DIR})...${NC}"
+    mkdir -p "$BUILD_OUTPUT_DIR"
+    # Copy both files and keep original names
+    cp -f "$RETROARCH_DIR/${CORENAME}_libretro.js" "$BUILD_OUTPUT_DIR/"
+    cp -f "$RETROARCH_DIR/${CORENAME}_libretro.wasm" "$BUILD_OUTPUT_DIR/"
+
+    echo -e "\n${GREEN}✓ ${CORE_NAME} build complete!${NC}"
+    echo -e "${GREEN}Output files:${NC}"
+    echo -e "  - $WEB_DIR/${CORENAME}_libretro.js"
+    echo -e "  - $WEB_DIR/${CORENAME}_libretro.wasm"
+    echo -e "  - $BUILD_OUTPUT_DIR/${CORENAME}_libretro.js"
+    echo -e "  - $BUILD_OUTPUT_DIR/${CORENAME}_libretro.wasm"
+}
+
+# Main script
+main() {
+    # Check arguments and show help
+    if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
+        print_usage
+        exit 0
+    fi
+
+    if [ $# -eq 0 ]; then
+        echo -e "${RED}Error: No cores specified${NC}\n"
+        print_usage
+        exit 1
+    fi
+
+    # Check emsdk
+    check_emsdk
+
+    # Optionally remove old JS/WASM outputs globally to avoid stale artifacts unless NO_CLEAN is set
+    if [ -z "${NO_CLEAN:-}" ]; then
+        clean_all_js_wasm_outputs
+    else
+        echo -e "${YELLOW}NO_CLEAN set; skipping global JS/WASM cleanup${NC}"
+    fi
+
+    # Determine which cores to build
+    local CORES_TO_BUILD=()
+    if [ "$1" == "all" ]; then
+        CORES_TO_BUILD=("${AVAILABLE_CORES[@]}")
+    else
+        CORES_TO_BUILD=("$@")
+    fi
+
+    echo -e "\n${BLUE}Cores to build: ${CORES_TO_BUILD[*]}${NC}\n"
+
+    # Build each core
+    local SUCCESS_COUNT=0
+    local FAIL_COUNT=0
+    local FAILED_CORES=()
+
+    for core in "${CORES_TO_BUILD[@]}"; do
+        if build_core "$core"; then
+            ((SUCCESS_COUNT++))
+        else
+            ((FAIL_COUNT++))
+            FAILED_CORES+=("$core")
+        fi
+    done
+
+    # Summary
+    echo -e "\n${GREEN}========================================${NC}"
+    echo -e "${GREEN}Build Summary${NC}"
+    echo -e "${GREEN}========================================${NC}"
+    echo -e "${GREEN}Successful builds: $SUCCESS_COUNT${NC}"
+    if [ $FAIL_COUNT -gt 0 ]; then
+        echo -e "${RED}Failed builds: $FAIL_COUNT${NC}"
+        echo -e "${RED}Failed cores: ${FAILED_CORES[*]}${NC}"
+    fi
+
+    if [ $SUCCESS_COUNT -gt 0 ]; then
+        echo -e "\n${YELLOW}Note: Make sure you have the required assets in $WEB_DIR/assets/${NC}"
+        echo -e "${YELLOW}You can download them from: https://buildbot.libretro.com/nightly/emscripten/${NC}"
+    fi
+
+    # Exit with error if any builds failed
+    [ $FAIL_COUNT -eq 0 ]
+}
+
+# Run main function
+main "$@"

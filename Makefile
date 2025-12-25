@@ -4,7 +4,7 @@
 SHELL := /bin/zsh
 BUILD_SCRIPT := ./build-cores.sh
 
-.PHONY: default help build build-core clean clean-core
+.PHONY: default help build build-core clean clean-core pg
 
 default: build
 
@@ -53,3 +53,5 @@ help:
 
 playground:
 	cd web && pnpm run dev
+
+pg: playground

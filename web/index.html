@@ -57,16 +57,11 @@
         core: 'dosbox_pure',
         rom: '/roms/DOOM1993.zip',
         resolveCoreJs(core, options) {
-          // return 'http://p.rebit.cc/web.libretro.com/fceumm_libretro.js';
-          console.log('core', core)
           return `/${core}_libretro.js`
         },
         resolveCoreWasm(core, options) {
-          // return 'http://p.rebit.cc/web.libretro.com/fceumm_libretro.wasm';
-          console.log('core wasm', core)
           return `/${core}_libretro.wasm`
         },
-        // rom: 'flappybird.nes',
         element: document.getElementById('game-canvas'),
         style: {
           position: 'relative',
@@ -74,12 +69,12 @@
           height: '400px',
         },
         retroarchConfig: {
-          video_vsync: false,
-          video_swap_interval: 0,
-          video_shader_enable: false,
-          audio_mute_enable: true,
-          audio_mixer_mute_enable: true,
-          fps_show: true
+          // video_vsync: false,
+          // video_swap_interval: 0,
+          // video_shader_enable: false,
+          // audio_mute_enable: true,
+          // audio_mixer_mute_enable: true,
+          // fps_show: true
         },
         retroarchCoreConfig: {
         },
