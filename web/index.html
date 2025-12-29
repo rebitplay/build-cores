@@ -54,8 +54,8 @@
 
     function getLaunchOptions() {
       return {
-        core: 'dosbox_pure',
-        rom: '/roms/DOOM1993.zip',
+        core: 'fceumm',
+        rom: 'flappybird.nes',
         resolveCoreJs(core, options) {
           return `/${core}_libretro.js`
         },
@@ -69,12 +69,7 @@
           height: '400px',
         },
         retroarchConfig: {
-          // video_vsync: false,
-          // video_swap_interval: 0,
-          // video_shader_enable: false,
-          // audio_mute_enable: true,
-          // audio_mixer_mute_enable: true,
-          // fps_show: true
+          fps_show: true
         },
         retroarchCoreConfig: {
         },
