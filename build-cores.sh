@@ -19,6 +19,11 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RETROARCH_DIR="$PROJECT_ROOT/RetroArch"
 WEB_DIR="$PROJECT_ROOT/web"
 BUILD_OUTPUT_DIR="$PROJECT_ROOT/build"
+rebit_cores_dir="$PROJECT_ROOT/../rebit/public/cores"
+mgba_dual_source_dir="$PROJECT_ROOT/cores/libretro-mgba_dual"
+mgba_dual_emscripten_dir="$mgba_dual_source_dir/rebit/emscripten"
+mgba_dual_build_dir="$BUILD_OUTPUT_DIR/mgba_dual-emscripten"
+mgba_source_dir="$mgba_dual_source_dir"
 
 # Source core repository configuration and helper functions from setup-cores.sh.
 # This file defines CORE_REPOS, AVAILABLE_CORES and lookup helpers (get_core_repo, list_core_repos).
@@ -72,6 +77,7 @@ print_usage() {
     echo -e "  $0 -h"
     echo -e "  $0 fceumm"
     echo -e "  $0 fceumm snes9x"
+    echo -e "  $0 mgba_dual  # builds cores/libretro-mgba_dual/rebit/emscripten"
     echo -e "  $0 all"
     echo ""
     echo -e "${BLUE}Environment variables:${NC}"
@@ -117,9 +123,91 @@ clean_all_js_wasm_outputs() {
     rm -f "$BUILD_OUTPUT_DIR"/*_libretro.js "$BUILD_OUTPUT_DIR"/*_libretro.wasm || true
 }
 
+clean_mgba_dual_outputs() {
+    rm -f "$WEB_DIR"/mgba_dual_libretro.js "$WEB_DIR"/mgba_dual_libretro.wasm || true
+    rm -f "$BUILD_OUTPUT_DIR"/mgba_dual_libretro.js "$BUILD_OUTPUT_DIR"/mgba_dual_libretro.wasm || true
+    if [ -d "$rebit_cores_dir" ]; then
+        rm -f "$rebit_cores_dir"/mgba_dual_libretro.js "$rebit_cores_dir"/mgba_dual_libretro.wasm || true
+    fi
+}
+
+copy_mgba_dual_outputs() {
+    local source_dir="$1"
+    local target_dir="$2"
+    mkdir -p "$target_dir"
+    cp -f "$source_dir/mgba_dual_libretro.js" "$target_dir/mgba_dual_libretro.js"
+    cp -f "$source_dir/mgba_dual_libretro.wasm" "$target_dir/mgba_dual_libretro.wasm"
+}
+
+build_mgba_dual() {
+    echo -e "\n${GREEN}========================================${NC}"
+    echo -e "${GREEN}Building custom mGBA dual runtime${NC}"
+    echo -e "${GREEN}========================================${NC}"
+
+    if [ ! -d "$mgba_source_dir" ]; then
+        echo -e "${RED}Error: mGBA source directory not found: $mgba_source_dir${NC}"
+        echo -e "${YELLOW}Create cores/libretro-mgba_dual as a clone or symlink to the local mgba_dual fork.${NC}"
+        return 1
+    fi
+
+    if [ ! -f "$mgba_dual_emscripten_dir/CMakeLists.txt" ]; then
+        echo -e "${RED}Error: mGBA dual Emscripten wrapper not found: $mgba_dual_emscripten_dir${NC}"
+        echo -e "${YELLOW}Expected cores/libretro-mgba_dual/rebit/emscripten.${NC}"
+        return 1
+    fi
+
+    if [ -z "${NO_CLEAN:-}" ]; then
+        clean_mgba_dual_outputs
+        rm -rf "$mgba_dual_build_dir"
+    else
+        echo -e "${YELLOW}NO_CLEAN set; reusing ${mgba_dual_build_dir}${NC}"
+    fi
+
+    echo -e "\n${BLUE}Step 1: Configuring mGBA standalone Emscripten build...${NC}"
+    emcmake cmake \
+        -S "$mgba_dual_emscripten_dir" \
+        -B "$mgba_dual_build_dir" \
+        -DMGBA_SOURCE_DIR="$mgba_source_dir" \
+        -DCMAKE_BUILD_TYPE=Release
+
+    echo -e "\n${BLUE}Step 2: Building mgba_dual runtime...${NC}"
+    emmake cmake --build "$mgba_dual_build_dir" --parallel "$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)"
+
+    local DIST_DIR="$mgba_dual_build_dir/dist"
+    if [ ! -f "$DIST_DIR/mgba_dual_libretro.js" ] || [ ! -f "$DIST_DIR/mgba_dual_libretro.wasm" ]; then
+        echo -e "${RED}Error: custom mGBA dual build did not produce mgba_dual_libretro.js/.wasm${NC}"
+        return 1
+    fi
+
+    echo -e "\n${BLUE}Step 3: Copying output to web and build directories...${NC}"
+    copy_mgba_dual_outputs "$DIST_DIR" "$WEB_DIR"
+    copy_mgba_dual_outputs "$DIST_DIR" "$BUILD_OUTPUT_DIR"
+
+    if [ -d "$rebit_cores_dir" ]; then
+        echo -e "\n${BLUE}Step 4: Copying output to Rebit public cores (${rebit_cores_dir})...${NC}"
+        copy_mgba_dual_outputs "$DIST_DIR" "$rebit_cores_dir"
+    fi
+
+    echo -e "\n${GREEN}✓ custom mGBA dual build complete!${NC}"
+    echo -e "${GREEN}Output files:${NC}"
+    echo -e "  - $WEB_DIR/mgba_dual_libretro.js"
+    echo -e "  - $WEB_DIR/mgba_dual_libretro.wasm"
+    echo -e "  - $BUILD_OUTPUT_DIR/mgba_dual_libretro.js"
+    echo -e "  - $BUILD_OUTPUT_DIR/mgba_dual_libretro.wasm"
+    if [ -d "$rebit_cores_dir" ]; then
+        echo -e "  - $rebit_cores_dir/mgba_dual_libretro.js"
+        echo -e "  - $rebit_cores_dir/mgba_dual_libretro.wasm"
+    fi
+}
+
 # Function to build a single core
 build_core() {
     local CORE_NAME=$1
+
+    if [ "$CORE_NAME" == "mgba_dual" ]; then
+        build_mgba_dual
+        return $?
+    fi
 
     # Check if core is supported
     if [[ ! " ${AVAILABLE_CORES[@]} " =~ " ${CORE_NAME} " ]]; then
@@ -337,12 +425,22 @@ build_core() {
     cp -f "$RETROARCH_DIR/${CORENAME}_libretro.js" "$BUILD_OUTPUT_DIR/"
     cp -f "$RETROARCH_DIR/${CORENAME}_libretro.wasm" "$BUILD_OUTPUT_DIR/"
 
+    if [ -d "$rebit_cores_dir" ]; then
+        echo -e "\n${BLUE}Step 4c: Copying output to Rebit public cores (${rebit_cores_dir})...${NC}"
+        cp -f "$RETROARCH_DIR/${CORENAME}_libretro.js" "$rebit_cores_dir/"
+        cp -f "$RETROARCH_DIR/${CORENAME}_libretro.wasm" "$rebit_cores_dir/"
+    fi
+
     echo -e "\n${GREEN}✓ ${CORE_NAME} build complete!${NC}"
     echo -e "${GREEN}Output files:${NC}"
     echo -e "  - $WEB_DIR/${CORENAME}_libretro.js"
     echo -e "  - $WEB_DIR/${CORENAME}_libretro.wasm"
     echo -e "  - $BUILD_OUTPUT_DIR/${CORENAME}_libretro.js"
     echo -e "  - $BUILD_OUTPUT_DIR/${CORENAME}_libretro.wasm"
+    if [ -d "$rebit_cores_dir" ]; then
+        echo -e "  - $rebit_cores_dir/${CORENAME}_libretro.js"
+        echo -e "  - $rebit_cores_dir/${CORENAME}_libretro.wasm"
+    fi
 }
 
 # Main script

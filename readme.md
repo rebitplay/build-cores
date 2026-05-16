@@ -7,6 +7,7 @@ This project builds RetroArch cores for WebAssembly/Emscripten.
 - **fceumm** - NES/Famicom emulator
 - **snes9x** - SNES emulator
 - **mgba** - Game Boy Advance emulator
+- **mgba_dual** - Rebit custom standalone mGBA WebAssembly runtime built from `git@github.com:rebitplay/mgba_dual.git` on branch `rebit`.
 
 ## Prerequisites
 
@@ -36,6 +37,13 @@ Clone the cores you want to build:
 
 # Or clone specific cores
 ./setup-cores.sh snes9x mgba
+
+# Clone the custom Rebit mGBA dual runtime
+./setup-cores.sh mgba_dual
+
+# Or use the local maintained fork directly
+mkdir -p cores
+ln -s /Users/daudau/Code/rebitplay/mgba_dual cores/libretro-mgba_dual
 ```
 
 ### 2. Build Cores
@@ -49,7 +57,7 @@ Using the script directly:
 ./build-cores.sh fceumm
 
 # Build multiple cores
-./build-cores.sh fceumm snes9x mgba
+./build-cores.sh fceumm snes9x mgba_dual
 
 # Build all available cores
 ./build-cores.sh all
@@ -62,7 +70,7 @@ Using the Makefile (preferred) — default target builds all cores:
 make
 
 # build specific cores
-make build CORES="fceumm snes9x"
+make build CORES="fceumm snes9x mgba_dual"
 
 # build a single core directly
 make build-core CORE=fceumm
@@ -77,6 +85,7 @@ make clean-core CORE=fceumm
 ## Output
 
 Built files will be placed in both the `web/` directory (for the web player) and a new top-level `build/` directory so they're easy to find and reuse.
+If `../rebit/public/cores` exists, the build script also copies the generated JS/WASM there.
 
 web/ (used by the web player):
 - `<corename>_libretro.js` - JavaScript loader
@@ -87,10 +96,14 @@ For example:
 - `web/fceumm_libretro.wasm`
 - `web/snes9x_libretro.js`
 - `web/snes9x_libretro.wasm`
+- `web/mgba_dual_libretro.js`
+- `web/mgba_dual_libretro.wasm`
 
 Top-level build/ (convenience copy of created artifacts):
 - `build/fceumm_libretro.js`
 - `build/fceumm_libretro.wasm`
+- `build/mgba_dual_libretro.js`
+- `build/mgba_dual_libretro.wasm`
 
 ## Project Structure
 
@@ -103,14 +116,32 @@ Top-level build/ (convenience copy of created artifacts):
 ├── cores/                  # Core repositories (cloned with setup-cores.sh)
 │   ├── libretro-fceumm/
 │   ├── libretro-snes9x/
-│   └── libretro-mgba/
+│   ├── libretro-mgba/
+│   └── libretro-mgba_dual/
 ├── build/                  # Build output directory (convenience copy)
 └── web/                    # Build output directory (for web player)
     ├── fceumm_libretro.js
     ├── fceumm_libretro.wasm
+    ├── mgba_dual_libretro.js
+    ├── mgba_dual_libretro.wasm
     ├── retroarch.cfg
     └── assets/             # RetroArch assets (download separately)
 ```
+
+## mGBA Dual Runtime
+
+`mgba_dual` is not a libretro core. It is a standalone Emscripten runtime built from `cores/libretro-mgba_dual/rebit/emscripten`, exporting `createMGBAModule`, `mgba_demo_*`, and `mgba_remote_*`. Rebit's `/playground/mgba-link` and `/playground/mgba-dual` pages use the `mgba_demo_*` lockstep API.
+
+```bash
+./setup-cores.sh mgba_dual
+# or:
+mkdir -p cores
+ln -s /Users/daudau/Code/rebitplay/mgba_dual cores/libretro-mgba_dual
+
+make build-core CORE=mgba_dual
+```
+
+The target expects the fork at `cores/libretro-mgba_dual` and the wrapper at `cores/libretro-mgba_dual/rebit/emscripten`. The output files are `mgba_dual_libretro.js` and `mgba_dual_libretro.wasm`.
 
 ## Configuration
 

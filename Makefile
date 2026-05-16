@@ -29,7 +29,7 @@ build-core:
 
 # Clean build artifacts
 clean:
-	@echo "Cleaning build/ and web/*_libretro.* artifacts..."
+	@echo "Cleaning build/ and web core artifacts..."
 	@rm -rf build
 	@rm -rf RetroArch/obj-embscripten
 	@find web -maxdepth 1 -type f -name "*_libretro.*" -print -delete || true
@@ -40,13 +40,18 @@ clean-core:
 		echo "Error: specify CORE=<core> (e.g. CORE=fceumm)"; exit 1; \
 	fi
 	@echo "Cleaning artifacts for core: $(CORE)"
-	@rm -f build/$(CORE)_libretro.* web/$(CORE)_libretro.* || true
+	@if [ "$(CORE)" = "mgba_dual" ]; then \
+		rm -f build/mgba_dual_libretro.* web/mgba_dual_libretro.*; \
+	else \
+		rm -f build/$(CORE)_libretro.* web/$(CORE)_libretro.*; \
+	fi
 	@echo "Cleaned $(CORE)"
 
 help:
 	@echo "Makefile targets:"
 	@echo "  make            # build all cores (default)"
-	@echo "  make build CORES=all|fceumm|snes9x|mgba|melonds     # build specific cores"
+	@echo "  make build CORES=all|fceumm|snes9x|mgba|mgba_dual|melonds     # build specific cores"
+	@echo "  make build-core CORE=mgba_dual          # build custom Rebit mGBA runtime"
 	@echo "  make build-core CORE=fceumm             # build one core"
 	@echo "  make clean                              # remove build/ and per-core outputs in web/"
 	@echo "  make clean-core CORE=fceumm             # remove outputs for a single core"
