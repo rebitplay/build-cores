@@ -8,6 +8,7 @@ This project builds RetroArch cores for WebAssembly/Emscripten.
 - **snes9x** - SNES emulator
 - **mgba** - Game Boy Advance emulator
 - **mgba_dual** - Rebit custom standalone mGBA WebAssembly runtime built from `git@github.com:rebitplay/mgba_dual.git` on branch `rebit`.
+- **gpsp** - Rebit gpSP fork for browser RFU/link cable experiments from `git@github.com:rebitplay/gpsp.git` on branch `rebit`.
 
 ## Prerequisites
 
@@ -41,9 +42,13 @@ Clone the cores you want to build:
 # Clone the custom Rebit mGBA dual runtime
 ./setup-cores.sh mgba_dual
 
+# Clone the custom Rebit gpSP fork
+./setup-cores.sh gpsp
+
 # Or use the local maintained fork directly
 mkdir -p cores
 ln -s /Users/daudau/Code/rebitplay/mgba_dual cores/libretro-mgba_dual
+ln -s /Users/daudau/Code/rebitplay/gpsp cores/libretro-gpsp
 ```
 
 ### 2. Build Cores
@@ -57,7 +62,7 @@ Using the script directly:
 ./build-cores.sh fceumm
 
 # Build multiple cores
-./build-cores.sh fceumm snes9x mgba_dual
+./build-cores.sh fceumm snes9x mgba_dual gpsp
 
 # Build all available cores
 ./build-cores.sh all
@@ -70,16 +75,23 @@ Using the Makefile (preferred) — default target builds all cores:
 make
 
 # build specific cores
-make build CORES="fceumm snes9x mgba_dual"
+make build CORES="fceumm snes9x mgba_dual gpsp"
 
 # build a single core directly
 make build-core CORE=fceumm
+make build-core CORE=gpsp
 
 # remove all build artifacts (web/ and top-level build/)
 make clean
 
 # remove build artifacts for one core
 make clean-core CORE=fceumm
+```
+
+To build gpSP from the maintained sibling checkout without replacing an existing `cores/libretro-gpsp` directory:
+
+```bash
+GPSP_SOURCE_DIR=/Users/daudau/Code/rebitplay/gpsp make build-core CORE=gpsp
 ```
 
 ## Output
@@ -117,7 +129,8 @@ Top-level build/ (convenience copy of created artifacts):
 │   ├── libretro-fceumm/
 │   ├── libretro-snes9x/
 │   ├── libretro-mgba/
-│   └── libretro-mgba_dual/
+│   ├── libretro-mgba_dual/
+│   └── libretro-gpsp/
 ├── build/                  # Build output directory (convenience copy)
 └── web/                    # Build output directory (for web player)
     ├── fceumm_libretro.js

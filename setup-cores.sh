@@ -22,6 +22,7 @@ if [ -z "${SETUP_CORES_CONFIG_LOADED:-}" ]; then
     "snes9x=https://github.com/rebitplay/snes9x.git"
     "mgba=https://github.com/rebitplay/mgba.git"
     "mgba_dual=git@github.com:rebitplay/mgba_dual.git#rebit"
+    "gpsp=git@github.com:rebitplay/gpsp.git#rebit"
     "pcsx_rearmed=https://github.com/rebitplay/pcsx_rearmed.git"
     "melonds=https://github.com/rebitplay/melonDS.git"
     "sameboy=git@github.com:rebitplay/SameBoy.git#libretro"

@@ -50,7 +50,7 @@ clean-core:
 help:
 	@echo "Makefile targets:"
 	@echo "  make            # build all cores (default)"
-	@echo "  make build CORES=all|fceumm|snes9x|mgba|mgba_dual|melonds     # build specific cores"
+	@echo "  make build CORES=all|fceumm|snes9x|mgba|mgba_dual|gpsp|melonds # build specific cores"
 	@echo "  make build-core CORE=mgba_dual          # build custom Rebit mGBA runtime"
 	@echo "  make build-core CORE=fceumm             # build one core"
 	@echo "  make clean                              # remove build/ and per-core outputs in web/"

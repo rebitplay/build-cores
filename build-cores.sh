@@ -217,6 +217,9 @@ build_core() {
     fi
 
     local CORE_DIR="$PROJECT_ROOT/cores/libretro-$CORE_NAME"
+    if [ "$CORE_NAME" == "gpsp" ] && [ -n "${GPSP_SOURCE_DIR:-}" ]; then
+        CORE_DIR="$GPSP_SOURCE_DIR"
+    fi
 
     echo -e "\n${GREEN}========================================${NC}"
     echo -e "${GREEN}Building ${CORE_NAME} core${NC}"
