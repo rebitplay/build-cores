@@ -8,7 +8,7 @@ This project builds RetroArch cores for WebAssembly/Emscripten.
 - **snes9x** - SNES emulator
 - **mgba** - Game Boy Advance emulator
 - **mgba_dual** - Rebit custom standalone mGBA WebAssembly runtime built from `git@github.com:rebitplay/mgba_dual.git` on branch `rebit`.
-- **gpsp** - Rebit gpSP fork for browser RFU/link cable experiments from `git@github.com:rebitplay/gpsp.git` on branch `rebit`.
+- **gpsp** - Rebit gpSP fork for browser RFU/link cable experiments from `https://github.com/rebitplay/gpsp.git` on branch `rebit`.
 
 ## Prerequisites
 
