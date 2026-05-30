@@ -9,6 +9,9 @@ This project builds RetroArch cores for WebAssembly/Emscripten.
 - **mgba** - Game Boy Advance emulator
 - **mgba_dual** - Rebit custom standalone mGBA WebAssembly runtime built from `git@github.com:rebitplay/mgba_dual.git` on branch `rebit`.
 - **gpsp** - Rebit gpSP fork for browser RFU/link cable experiments from `https://github.com/rebitplay/gpsp.git` on branch `rebit`.
+- **ppsspp** - Rebit PPSSPP fork for PlayStation Portable emulation from `https://github.com/rebitplay/ppsspp.git`.
+- **azahar** - Rebit Azahar fork for Nintendo 3DS emulation from `https://github.com/rebitplay/azahar.git` on branch `rebit`.
+- **vbam** - Rebit VBA-M fork for GBA link/Multi-Pak experiments from `git@github.com:rebitplay/visualboyadvance-m.git` on branch `rebit`.
 
 ## Prerequisites
 
@@ -45,10 +48,22 @@ Clone the cores you want to build:
 # Clone the custom Rebit gpSP fork
 ./setup-cores.sh gpsp
 
+# Clone the Rebit PPSSPP fork
+./setup-cores.sh ppsspp
+
+# Clone the Rebit Azahar fork
+./setup-cores.sh azahar
+
+# Clone the custom Rebit VBA-M fork
+./setup-cores.sh vbam
+
 # Or use the local maintained fork directly
 mkdir -p cores
 ln -s /Users/daudau/Code/rebitplay/mgba_dual cores/libretro-mgba_dual
 ln -s /Users/daudau/Code/rebitplay/gpsp cores/libretro-gpsp
+ln -s /Users/daudau/Code/rebitplay/ppsspp cores/libretro-ppsspp
+ln -s /Users/daudau/Code/rebitplay/azahar cores/libretro-azahar
+ln -s /Users/daudau/Code/rebitplay/visualboyadvance-m cores/libretro-vbam
 ```
 
 ### 2. Build Cores
@@ -62,7 +77,7 @@ Using the script directly:
 ./build-cores.sh fceumm
 
 # Build multiple cores
-./build-cores.sh fceumm snes9x mgba_dual gpsp
+./build-cores.sh fceumm snes9x mgba_dual gpsp ppsspp azahar vbam
 
 # Build all available cores
 ./build-cores.sh all
@@ -75,11 +90,14 @@ Using the Makefile (preferred) — default target builds all cores:
 make
 
 # build specific cores
-make build CORES="fceumm snes9x mgba_dual gpsp"
+make build CORES="fceumm snes9x mgba_dual gpsp ppsspp azahar vbam"
 
 # build a single core directly
 make build-core CORE=fceumm
 make build-core CORE=gpsp
+make build-core CORE=ppsspp
+make build-core CORE=azahar
+make build-core CORE=vbam
 
 # remove all build artifacts (web/ and top-level build/)
 make clean
@@ -92,6 +110,18 @@ To build gpSP from the maintained sibling checkout without replacing an existing
 
 ```bash
 GPSP_SOURCE_DIR=/Users/daudau/Code/rebitplay/gpsp make build-core CORE=gpsp
+```
+
+To build PPSSPP from the maintained sibling checkout:
+
+```bash
+PPSSPP_SOURCE_DIR=/Users/daudau/Code/rebitplay/ppsspp make build-core CORE=ppsspp
+```
+
+To build Azahar from the maintained sibling checkout:
+
+```bash
+AZAHAR_SOURCE_DIR=/Users/daudau/Code/rebitplay/azahar make build-core CORE=azahar
 ```
 
 ## Output
@@ -130,7 +160,10 @@ Top-level build/ (convenience copy of created artifacts):
 │   ├── libretro-snes9x/
 │   ├── libretro-mgba/
 │   ├── libretro-mgba_dual/
-│   └── libretro-gpsp/
+│   ├── libretro-gpsp/
+│   ├── libretro-ppsspp/
+│   ├── libretro-azahar/
+│   └── libretro-vbam/
 ├── build/                  # Build output directory (convenience copy)
 └── web/                    # Build output directory (for web player)
     ├── fceumm_libretro.js

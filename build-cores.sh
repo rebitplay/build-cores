@@ -200,12 +200,138 @@ build_mgba_dual() {
     fi
 }
 
+build_azahar() {
+    local CORE_NAME="azahar"
+    local CORENAME="azahar"
+    local CORE_DIR="${AZAHAR_SOURCE_DIR:-$PROJECT_ROOT/cores/libretro-azahar}"
+    local AZAHAR_BUILD_DIR="$CORE_DIR/build_emscripten"
+    local JOBS
+    JOBS="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)"
+
+    echo -e "\n${GREEN}========================================${NC}"
+    echo -e "${GREEN}Building Azahar libretro core${NC}"
+    echo -e "${GREEN}========================================${NC}"
+
+    if [ ! -d "$CORE_DIR" ]; then
+        echo -e "${RED}Error: Azahar source directory not found: $CORE_DIR${NC}"
+        echo -e "${YELLOW}Run ./setup-cores.sh azahar or set AZAHAR_SOURCE_DIR=/path/to/azahar.${NC}"
+        return 1
+    fi
+
+    if [ -z "${NO_CLEAN:-}" ]; then
+        clean_js_wasm_outputs_for_core "$CORENAME"
+        rm -rf "$AZAHAR_BUILD_DIR"
+    else
+        echo -e "${YELLOW}NO_CLEAN set; reusing ${AZAHAR_BUILD_DIR}${NC}"
+    fi
+
+    echo -e "\n${BLUE}Step 1: Configuring Azahar Emscripten build...${NC}"
+    emcmake cmake \
+        -S "$CORE_DIR" \
+        -B "$AZAHAR_BUILD_DIR" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DENABLE_LIBRETRO=ON \
+        -DENABLE_TESTS=OFF \
+        -DENABLE_QT=OFF \
+        -DENABLE_SDL2=OFF \
+        -DENABLE_WEB_SERVICE=OFF \
+        -DENABLE_SCRIPTING=OFF \
+        -DENABLE_GDBSTUB=OFF \
+        -DENABLE_OPENAL=OFF \
+        -DENABLE_CUBEB=OFF \
+        -DENABLE_LIBUSB=OFF \
+        -DENABLE_ROOM=OFF \
+        -DENABLE_ROOM_STANDALONE=OFF \
+        -DENABLE_VULKAN=OFF \
+        -DENABLE_OPENGL=ON \
+        -DENABLE_LTO=OFF \
+        -DCITRA_USE_PRECOMPILED_HEADERS=OFF \
+        -DCITRA_WARNINGS_AS_ERRORS=OFF \
+        -DENABLE_SSE42=OFF \
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+
+    echo -e "\n${BLUE}Step 2: Building Azahar libretro archive...${NC}"
+    emmake cmake --build "$AZAHAR_BUILD_DIR" --target azahar_libretro --parallel "$JOBS"
+
+    local CORE_ARCHIVE="$AZAHAR_BUILD_DIR/src/citra_libretro/azahar_libretro.a"
+    if [ ! -f "$CORE_ARCHIVE" ]; then
+        echo -e "${RED}Error: Azahar core build did not produce ${CORE_ARCHIVE}${NC}"
+        return 1
+    fi
+
+    echo -e "${GREEN}✓ Azahar core built successfully${NC}"
+    echo -e "${GREEN}Core output: $CORE_ARCHIVE${NC}"
+
+    echo -e "\n${BLUE}Step 3: Packaging Azahar static archives...${NC}"
+    local CORE_OUTPUT="$AZAHAR_BUILD_DIR/azahar_libretro_full.a"
+    local MRI_SCRIPT="$AZAHAR_BUILD_DIR/azahar_libretro_full.mri"
+    rm -f "$CORE_OUTPUT" "$MRI_SCRIPT"
+    {
+        echo "CREATE $CORE_OUTPUT"
+        find "$AZAHAR_BUILD_DIR" -name '*.a' -type f ! -name 'azahar_libretro_full.a' -print | sort | while IFS= read -r archive; do
+            echo "ADDLIB $archive"
+        done
+        echo "SAVE"
+        echo "END"
+    } > "$MRI_SCRIPT"
+    emar -M < "$MRI_SCRIPT"
+    emranlib "$CORE_OUTPUT"
+
+    echo -e "${GREEN}Combined core archive: $CORE_OUTPUT${NC}"
+
+    echo -e "\n${BLUE}Step 4: Building RetroArch web player with Azahar...${NC}"
+    cd "$RETROARCH_DIR"
+    emmake make -f Makefile.emscripten clean
+    cp "$CORE_OUTPUT" "$RETROARCH_DIR/libretro_emscripten.bc"
+    rm -f "$RETROARCH_DIR/libretro_emscripten.a"
+    emmake make -f Makefile.emscripten LIBRETRO="$CORENAME" HAVE_CHEEVOS=0 HAVE_OPENGLES3=1 \
+        INITIAL_HEAP="${AZAHAR_INITIAL_HEAP:-536870912}" STACK_SIZE="${AZAHAR_STACK_SIZE:-8388608}" \
+        LIBS="-s USE_ZLIB=1 -lm -Wl,--allow-multiple-definition" \
+        -j"$JOBS" all
+
+    if [ ! -f "$RETROARCH_DIR/${CORENAME}_libretro.js" ] || [ ! -f "$RETROARCH_DIR/${CORENAME}_libretro.wasm" ]; then
+        echo -e "${RED}Error: RetroArch build failed for Azahar!${NC}"
+        return 1
+    fi
+
+    echo -e "${GREEN}✓ RetroArch built successfully with Azahar${NC}"
+
+    echo -e "\n${BLUE}Step 5: Copying output to web and build directories...${NC}"
+    mkdir -p "$WEB_DIR" "$BUILD_OUTPUT_DIR"
+    cp -f "$RETROARCH_DIR/${CORENAME}_libretro.js" "$WEB_DIR/"
+    cp -f "$RETROARCH_DIR/${CORENAME}_libretro.wasm" "$WEB_DIR/"
+    cp -f "$RETROARCH_DIR/${CORENAME}_libretro.js" "$BUILD_OUTPUT_DIR/"
+    cp -f "$RETROARCH_DIR/${CORENAME}_libretro.wasm" "$BUILD_OUTPUT_DIR/"
+
+    if [ -d "$rebit_cores_dir" ]; then
+        echo -e "\n${BLUE}Step 5b: Copying output to Rebit public cores (${rebit_cores_dir})...${NC}"
+        cp -f "$RETROARCH_DIR/${CORENAME}_libretro.js" "$rebit_cores_dir/"
+        cp -f "$RETROARCH_DIR/${CORENAME}_libretro.wasm" "$rebit_cores_dir/"
+    fi
+
+    echo -e "\n${GREEN}✓ Azahar build complete!${NC}"
+    echo -e "${GREEN}Output files:${NC}"
+    echo -e "  - $WEB_DIR/${CORENAME}_libretro.js"
+    echo -e "  - $WEB_DIR/${CORENAME}_libretro.wasm"
+    echo -e "  - $BUILD_OUTPUT_DIR/${CORENAME}_libretro.js"
+    echo -e "  - $BUILD_OUTPUT_DIR/${CORENAME}_libretro.wasm"
+    if [ -d "$rebit_cores_dir" ]; then
+        echo -e "  - $rebit_cores_dir/${CORENAME}_libretro.js"
+        echo -e "  - $rebit_cores_dir/${CORENAME}_libretro.wasm"
+    fi
+}
+
 # Function to build a single core
 build_core() {
     local CORE_NAME=$1
 
     if [ "$CORE_NAME" == "mgba_dual" ]; then
         build_mgba_dual
+        return $?
+    fi
+
+    if [ "$CORE_NAME" == "azahar" ]; then
+        build_azahar
         return $?
     fi
 
@@ -219,6 +345,9 @@ build_core() {
     local CORE_DIR="$PROJECT_ROOT/cores/libretro-$CORE_NAME"
     if [ "$CORE_NAME" == "gpsp" ] && [ -n "${GPSP_SOURCE_DIR:-}" ]; then
         CORE_DIR="$GPSP_SOURCE_DIR"
+    fi
+    if [ "$CORE_NAME" == "ppsspp" ] && [ -n "${PPSSPP_SOURCE_DIR:-}" ]; then
+        CORE_DIR="$PPSSPP_SOURCE_DIR"
     fi
 
     echo -e "\n${GREEN}========================================${NC}"
@@ -244,6 +373,16 @@ build_core() {
     local CORENAME=$(echo $CORE_CONFIG | cut -d: -f2)
     local MAKEFILE=$(echo $CORE_CONFIG | cut -d: -f3)
     local BEFORE_SCRIPT=$(echo $CORE_CONFIG | cut -d: -f4-)
+
+    # PPSSPP keeps its libretro Emscripten recipe in libretro/Makefile, but
+    # its GitLab CI puts MAKEFILE_PATH in a separate .make-defs block that the
+    # generic parser does not currently merge.
+    if [ "$CORE_NAME" == "ppsspp" ]; then
+        BUILD_SUBDIR="libretro"
+        CORENAME="ppsspp"
+        MAKEFILE="Makefile"
+    fi
+
     local BUILD_DIR="$CORE_DIR/$BUILD_SUBDIR"
     local CORE_FILE_BC="${CORENAME}_libretro_emscripten.bc"
     local CORE_FILE_A="${CORENAME}_libretro_emscripten.a"
@@ -293,7 +432,7 @@ build_core() {
         emmake make -f "$MAKEFILE" platform=emscripten clean
         # Use -emit-llvm to produce LLVM bitcode objects, which are often more compatible with RetroArch's build system
         local CORE_CFLAGS="-Oz -emit-llvm"
-        CFLAGS="$CORE_CFLAGS" emmake make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) -f "$MAKEFILE" platform=emscripten STATIC_LINKING=1
+        CFLAGS="$CORE_CFLAGS" emmake make -j$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4) -f "$MAKEFILE" platform=emscripten STATIC_LINKING=1 AR="emar" RANLIB="emranlib"
         ACTUAL_BUILD_DIR="$BUILD_DIR"
     elif [ "$CORE_NAME" == "sameboy" ] || [ "$CORE_NAME" == "melonds" ]; then
         # If core is sameboy or melonds, use -Oz to fix section too large errors
